@@ -214,6 +214,9 @@ tbody tr:nth-child(even){background:color-mix(in srgb,var(--accent-soft) 45%,tra
   .y .mz,.y .mm{justify-self:start}
   .y .hand{--tw:18px;gap:4px 5px}
 }
+.ysub{font-size:13px;font-weight:700;color:var(--muted);margin:6px 2px 0;padding-top:8px;border-top:1px dashed var(--line)}
+.y.situ{background:var(--bg)}
+.y .bt{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:1px 7px;vertical-align:2px}
 .ysec{font-size:17px;margin:26px 0 10px;font-weight:700;display:flex;gap:8px;align-items:baseline}
 .ysec small{color:var(--muted);font-weight:500;font-size:13px}
 .empty{color:var(--muted);text-align:center;padding:24px}
@@ -226,6 +229,15 @@ tbody tr:nth-child(even){background:color-mix(in srgb,var(--accent-soft) 45%,tra
 .trow:last-child{border-bottom:0}
 .trow .w{font-weight:700}
 .trow .hz{font-family:var(--tilefont);color:var(--muted)}
+.res{background:var(--surface);border:1px solid var(--line);border-radius:12px;margin:-4px 0 18px;overflow:hidden}
+.res .cnt2{font-size:13px;color:var(--muted);padding:8px 14px;border-bottom:1px solid var(--line)}
+.res button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:10px 14px;font-size:14px;line-height:1.5;cursor:pointer}
+.res button:last-child{border-bottom:0}
+.res button:hover{background:var(--accent-soft)}
+.res button b{display:block;font-size:12px;color:var(--accent)}
+mark{background:color-mix(in srgb,var(--accent) 25%,transparent);color:inherit;border-radius:3px;padding:0 1px}
+.flash{animation:fl 2.4s ease-out}
+@keyframes fl{0%,40%{background:color-mix(in srgb,var(--accent) 22%,transparent);box-shadow:0 0 0 6px color-mix(in srgb,var(--accent) 22%,transparent)}100%{background:transparent;box-shadow:none}}
 .tcat{background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:14px;padding:6px 16px}
 @media (max-width:560px){.trow{grid-template-columns:auto 1fr}.trow .m{grid-column:1/-1}.trow .hz{font-size:14px}}
 
@@ -350,6 +362,8 @@ html{scroll-behavior:smooth}
   <nav class="chipbar" aria-label="장 바로가기">
     <a href="#ch1"><span>1</span>준비</a><a href="#ch2"><span>2</span>목표</a><a href="#ch3"><span>3</span>게임 흐름</a><a href="#ch4"><span>4</span>진행하기</a><a href="#ch5"><span>5</span>역과 점수</a><a href="#ch6"><span>6</span>기타 룰</a>
   </nav>
+  <div class="search noprint"><input type="search" id="rb-q" placeholder="룰북 검색 (예: 후리텐, 연짱, 도라)" aria-label="룰북 검색" autocomplete="off"></div>
+  <div class="res noprint" id="rb-res" hidden></div>
 
   <section class="ch" id="ch1">
     <header><div class="badge">1</div><h2>준비: 패와 도구<small>136장 · 34종 · 같은 패 4장씩</small></h2></header>
@@ -684,6 +698,7 @@ html{scroll-behavior:smooth}
 <div class="wrap view" id="v-yaku" hidden>
   <div class="view-head"><div class="badge">A</div><h2>역 목록<small>부록 A · 이름 · 판수 · 멘젠 · 예시</small></h2></div>
   <p class="lead">‘멘젠’ 칸 읽는 법: <span class="mz">멘젠 한정</span>은 울면 성립하지 않고, <span class="mm">울면 −1판</span>은 울었을 때 1판 줄어듭니다. 비어 있으면 울어도 판수 그대로입니다.</p>
+  <div class="search noprint"><input type="search" id="y-q" placeholder="역 이름이나 조건 검색 (예: 멘젠, 커츠, 1·9)" aria-label="역 검색" autocomplete="off"></div>
   <div class="chipbar noprint" role="group" aria-label="역 필터" id="yfilter">
     <button type="button" data-f="all" aria-pressed="true">전체 38</button>
     <button type="button" data-f="basic" aria-pressed="false">초보 필수</button>
@@ -900,27 +915,41 @@ const Y=[
  ['ym','지화','역만',1,'자가 아무도 울기 전 첫 쯔모로 화료','']
 ];
 const MZ=['','<span class="mz">멘젠 한정</span>','<span class="mm">울면 −1판</span>'];
-const SEC={basic:['초보 필수 역','7가지'],other:['기타 역','19가지'],ym:['역만','12가지 · 자 32,000 / 친 48,000']};
+const SITU=new Set(['일발','해저로월','하저로어','영상개화','창깡','더블리치','천화','지화']);
+const hanOf=y=>y[2]==='역만'?13:parseInt(y[2]);
+const HANS=[...new Set(Y.map(hanOf))].sort((a,b)=>a-b);
 let yf='all';
+const yq=()=>(document.getElementById('y-q')||{value:''}).value.trim();
+function qMatch(y,q){ return !q||(y[1]+' '+y[2]+' '+y[4]+' '+['','멘젠 한정','울면 −1판 울면 -1판'][y[3]]+(SITU.has(y[1])?' 상황 역':'')).includes(q); }
 function yMatch(y){
-  const h=parseInt(y[2])||99;
-  return yf==='all'||(yf==='basic'&&y[0]==='basic')||(yf==='h1'&&h===1)||(yf==='h2'&&h===2)||(yf==='h3'&&h>=3&&h<99)||(yf==='ym'&&y[0]==='ym')||(yf==='open'&&y[3]!==1);
+  const h=hanOf(y);
+  return yf==='all'||(yf==='h1'&&h===1)||(yf==='h2'&&h===2)||(yf==='h3'&&h>=3&&h<13)||(yf==='ym'&&h===13)||(yf==='open'&&y[3]!==1);
 }
+const ycard=(y,sum)=>`<div class="y${SITU.has(y[1])?' situ':''}"><div class="nm">${y[1]}${y[0]==='basic'&&!sum?'<span class="bt">초보 필수</span>':''}</div><div class="hn${y[2]==='역만'?' ym':''}">${y[2]}</div><div>${MZ[y[3]]}</div><div class="ds">${y[4]}${y[5]?`<div class="hand" data-hand="${y[5]}"></div>`:''}</div></div>`;
 function renderYaku(){
-  let html='';
-  for(const g of ['basic','other','ym']){
-    const rows=Y.filter(y=>y[0]===g&&yMatch(y));
-    if(!rows.length) continue;
-    html+=`<div class="ysec">${SEC[g][0]} <small>${SEC[g][1]}</small></div><div class="ylist">`+rows.map(y=>
-      `<div class="y"><div class="nm">${y[1]}</div><div class="hn${y[2]==='역만'?' ym':''}">${y[2]}</div><div>${MZ[y[3]]}</div><div class="ds">${y[4]}${y[5]?`<div class="hand" data-hand="${y[5]}"></div>`:''}</div></div>`).join('')+'</div>';
+  const q=yq(); let html='';
+  if(yf==='basic'||(yf==='all'&&!q)){
+    const rows=Y.filter(y=>y[0]==='basic'&&qMatch(y,q));
+    if(rows.length) html+=`<div class="ysec">초보 필수 역 <small>7가지 · 아래 판수별 목록에도 다시 나옵니다</small></div><div class="ylist">${rows.map(y=>ycard(y,true)).join('')}</div>`;
   }
-  const el=document.getElementById('ylist'); el.innerHTML=html||'<p class="empty">해당하는 역이 없습니다.</p>'; renderHands(el);
+  if(yf!=='basic'){
+    for(const h of HANS){
+      const rows=Y.filter(y=>hanOf(y)===h&&yMatch(y)&&qMatch(y,q));
+      if(!rows.length) continue;
+      const normal=rows.filter(y=>!SITU.has(y[1])), situ=rows.filter(y=>SITU.has(y[1]));
+      const all=Y.filter(y=>hanOf(y)===h).length;
+      html+=`<div class="ysec">${h===13?'역만':h+'판'} <small>${all}가지${h===13?' · 자 32,000 / 친 48,000':''}</small></div><div class="ylist">${normal.map(y=>ycard(y)).join('')}`+
+        (situ.length?`<div class="ysub">상황 역 · 손패 모양이 아니라 화료한 상황으로 붙는 역</div>${situ.map(y=>ycard(y)).join('')}`:'')+`</div>`;
+    }
+  }
+  const el=document.getElementById('ylist'); el.innerHTML=html||'<p class="empty">검색어나 필터에 맞는 역이 없습니다. 다른 말로 검색하거나 필터를 ‘전체’로 바꿔 보세요.</p>'; renderHands(el);
 }
 document.getElementById('yfilter').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b) return; yf=b.dataset.f;
   document.querySelectorAll('#yfilter button').forEach(x=>x.setAttribute('aria-pressed',x===b));
   renderYaku();
 });
+document.getElementById('y-q').addEventListener('input',renderYaku);
 renderYaku();
 
 /* ---------- 용어 ---------- */
@@ -975,6 +1004,32 @@ document.querySelectorAll('[data-step]').forEach(b=>b.addEventListener('click',(
 calc();
 
 renderHands(document);
+
+/* ---------- 룰북 검색 ---------- */
+const escH=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const rbBlocks=[...document.querySelectorAll('#v-rulebook section.ch :is(p,li,h3,h4,.ft,.cap,td,.call)')].filter(el=>!el.closest('.calc,.res'));
+const rbRes=document.getElementById('rb-res');
+let rbHits=[];
+function rbSearch(){
+  const q=document.getElementById('rb-q').value.trim();
+  if(!q){rbRes.hidden=true;rbRes.innerHTML='';return;}
+  rbHits=rbBlocks.filter(el=>el.textContent.includes(q)&&!rbBlocks.some(o=>o!==el&&o.contains(el)&&o.textContent.includes(q)&&o.tagName!=='LI'));
+  const shown=rbHits.slice(0,40);
+  rbRes.innerHTML=`<div class="cnt2">‘${escH(q)}’ ${rbHits.length?rbHits.length+'곳':'— 찾는 내용이 없습니다. 다른 말로 검색하거나 역 목록·용어 탭을 확인해 보세요.'}</div>`+
+    shown.map((el,k)=>{
+      const sec=el.closest('section.ch'), ch=sec?sec.querySelector('h2').firstChild.textContent.trim():'';
+      const no=sec?sec.querySelector('.badge').textContent:'';
+      const t=el.textContent.replace(/\s+/g,' ').trim(), i=t.indexOf(q), a=Math.max(0,i-28), z=Math.min(t.length,i+q.length+40);
+      const snip=(a?'…':'')+escH(t.slice(a,i))+'<mark>'+escH(q)+'</mark>'+escH(t.slice(i+q.length,z))+(z<t.length?'…':'');
+      return `<button type="button" data-k="${k}"><b>${no}장 ${escH(ch)}</b>${snip}</button>`;
+    }).join('');
+  rbRes.hidden=false;
+}
+document.getElementById('rb-q').addEventListener('input',rbSearch);
+rbRes.addEventListener('click',e=>{
+  const b=e.target.closest('[data-k]'); if(!b) return; const el=rbHits[+b.dataset.k];
+  el.scrollIntoView({block:'center'}); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+});
 
 /* ---------- 탭 (해시) ---------- */
 const VIEWS=['summary','rulebook','yaku','setup','terms'];
