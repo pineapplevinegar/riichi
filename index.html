@@ -61,6 +61,14 @@ nav.tabs a{flex:none;color:var(--felt-ink);text-decoration:none;padding:9px 14px
 nav.tabs a[aria-current="page"]{background:var(--bg);color:var(--fg);opacity:1;font-weight:700}
 nav.tabs a .k{font-size:11px;opacity:.7;margin-right:4px}
 nav.tabs a:focus-visible{outline:2px solid var(--felt-ink);outline-offset:-2px}
+@media (max-width:640px){
+  nav.tabs .wrap{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;overflow:visible;padding-block:10px}
+  nav.tabs a{grid-column:span 2;text-align:center;border-radius:10px;padding:8px 2px;font-size:14px;background:rgba(255,255,255,.14);opacity:1}
+  nav.tabs .wrap:not(:has(.ext)) a:nth-child(-n+2){grid-column:span 3}
+  nav.tabs a .k{display:none}
+  section.ch,.ysec,h3[id]{scroll-margin-top:118px}
+}
+.chipbar{flex-wrap:wrap;overflow:visible}
 
 main .wrap{padding-block:24px 72px}
 .view-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid var(--accent);padding-bottom:12px;margin-bottom:16px}
@@ -262,10 +270,10 @@ html{scroll-behavior:smooth}
     <div class="wrap">
       <a href="#summary" data-view="summary">한 장 요약</a>
       <a href="#rulebook" data-view="rulebook">룰북</a>
+      <a href="score.html" class="ext">점수계산기 ↗</a>
       <a href="#yaku" data-view="yaku"><span class="k">부록 A</span>역 목록</a>
       <a href="#setup" data-view="setup"><span class="k">부록 B</span>시작 방법</a>
       <a href="#terms" data-view="terms"><span class="k">부록 C</span>용어</a>
-      <a href="score.html">점수판 ↗</a>
     </div>
   </nav>
 </header>
@@ -333,7 +341,7 @@ html{scroll-behavior:smooth}
     <div class="flow">
       <span class="s">1장 가져오기</span><i>→</i><span class="s">1장 버리기</span><i>→</i><span class="s">남이 버린 패에 퐁·치·깡·론</span><i>→</i><span class="s">다음 사람</span>
     </div>
-    <p class="note" style="text-align:center;margin:4px 0 0">인쇄용 <a href="pdf/summary-a5.pdf">한 장 요약 PDF (A5)</a> · 게임 중 점수 기록은 <a href="score.html">점수판</a></p>
+    <p class="note" style="text-align:center;margin:4px 0 0">인쇄용 <a href="pdf/summary-a5.pdf">한 장 요약 PDF (A5)</a> · 게임 중 점수 기록은 <a href="score.html">점수계산기</a></p>
   </div>
 </div>
 
