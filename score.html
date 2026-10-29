@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>리치마작 점수판</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@600&display=swap">
+<style>
+/* Layout: 휴대폰을 테이블 가운데에 놓고 보는 화면. 4자리를 십자 배치(아래=첫 친), 가운데 국·본장·공탁, 아래 고정 버튼(론·쯔모·유국) → 바텀시트 */
+:root{
+  --bg:#f3f6fb; --surface:#ffffff; --fg:#1b2230; --muted:#5b6475; --line:#dde3ec;
+  --accent:#2a72d1; --accent-ink:#ffffff; --accent-soft:#e8f0fc;
+  --gold:#c98a12; --gold-soft:#fdf3dc;
+  --plus:#1f8a4c; --minus:#c2352b; --minus-soft:#fbe9e6;
+  --stick:#fbfaf3; --stick-edge:#c9c6b4;
+  --shade:rgba(15,22,35,.45);
+  --body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --num:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1319; --surface:#181e28; --fg:#e6ebf2; --muted:#98a3b5; --line:#2a3240;
+  --accent:#6fa2f0; --accent-ink:#0f1319; --accent-soft:#1a2740;
+  --gold:#f0b94a; --gold-soft:#3a2f17;
+  --plus:#5fd08e; --minus:#ff7b6e; --minus-soft:#3a1f1c;
+  --stick:#ecebe2; --stick-edge:#8d8b7c; --shade:rgba(0,0,0,.6); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1319; --surface:#181e28; --fg:#e6ebf2; --muted:#98a3b5; --line:#2a3240;
+  --accent:#6fa2f0; --accent-ink:#0f1319; --accent-soft:#1a2740;
+  --gold:#f0b94a; --gold-soft:#3a2f17;
+  --plus:#5fd08e; --minus:#ff7b6e; --minus-soft:#3a1f1c;
+  --stick:#ecebe2; --stick-edge:#8d8b7c; --shade:rgba(0,0,0,.6); color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
+.num{font-family:var(--num);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+
+.app{max-width:520px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px calc(96px + env(safe-area-inset-bottom,0px))}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+.bar h1{font-size:18px;margin:0;font-weight:700}
+.bar h1 small{display:block;font-size:12px;color:var(--muted);font-weight:500}
+.iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:10px;min-height:40px;padding:6px 12px;font-size:14px;font-weight:500}
+.iconbtn:disabled{opacity:.4}
+a.iconbtn{display:inline-flex;align-items:center;text-decoration:none;color:var(--fg)}
+.bar .acts{display:flex;gap:6px}
+
+/* table */
+.table{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-areas:". top ." "left mid right" ". bot .";gap:8px;align-items:stretch}
+.seat{background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:10px 8px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;min-width:0;position:relative}
+.seat[data-pos="0"]{grid-area:bot}.seat[data-pos="1"]{grid-area:right}.seat[data-pos="2"]{grid-area:top}.seat[data-pos="3"]{grid-area:left}
+.seat.oya{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold-soft)}
+.seat.neg{border-color:var(--minus)}
+.wind{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--muted)}
+.wind b{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font-size:14px}
+.seat.oya .wind b{background:var(--gold);color:var(--surface)}
+.oyatag{font-size:11px;font-weight:700;color:var(--gold)}
+.pname{font-weight:700;font-size:15px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.score{font-size:clamp(19px,5.6vw,24px);font-weight:600;line-height:1.1}
+.seat.neg .score{color:var(--minus)}
+.delta{font-size:13px;font-weight:600;min-height:18px}
+.delta.p{color:var(--plus)}.delta.m{color:var(--minus)}.delta.z{color:var(--muted)}
+.rbtn{margin-top:2px;width:100%;min-height:36px;border-radius:9px;border:1px solid var(--line);background:var(--bg);font-size:14px;font-weight:700}
+.rbtn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.rbtn:disabled{opacity:.45}
+.mid{grid-area:mid;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-radius:14px;background:var(--accent-soft);padding:8px 4px;text-align:center}
+.mid .rd{font-weight:700;font-size:18px;color:var(--accent)}
+.mid .sub{font-size:13px;color:var(--muted);line-height:1.35}
+.sticks{display:flex;gap:3px;justify-content:center;flex-wrap:wrap;max-width:100%}
+.stk{width:30px;height:7px;border-radius:4px;background:var(--stick);border:1px solid var(--stick-edge);position:relative}
+.stk::after{content:"";position:absolute;inset:1.5px auto 1.5px 50%;width:3px;transform:translateX(-50%);border-radius:50%;background:var(--minus)}
+.stk.h{width:22px}
+.stk.h::after{background:var(--muted);width:2px}
+
+/* info strip */
+.strip{margin-top:12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:14px}
+.strip .t{font-weight:700;margin-bottom:4px;display:flex;justify-content:space-between;gap:8px}
+.strip .t span{font-weight:500;color:var(--muted);font-size:13px}
+.strip p{margin:2px 0;color:var(--muted)}
+.strip .last{color:var(--fg)}
+.bonus{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.bonus div{background:var(--bg);border-radius:10px;padding:8px 10px}
+.bonus b{display:block;font-size:12px;color:var(--muted);font-weight:500}
+.bonus span{font-weight:700}
+
+/* bottom action bar */
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:20;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.dock .in{max-width:520px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.big{min-height:54px;border-radius:14px;border:0;font-size:18px;font-weight:700;background:var(--accent);color:var(--accent-ink)}
+.big.alt{background:var(--surface);color:var(--fg);border:1.5px solid var(--line)}
+.big:disabled{opacity:.4}
+
+/* sheet */
+.shade{position:fixed;inset:0;background:var(--shade);z-index:30}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;max-height:88%;overflow:auto;background:var(--surface);border-radius:18px 18px 0 0;padding:8px max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));box-shadow:0 -6px 24px rgba(0,0,0,.18)}
+.sheet .in{max-width:520px;margin:0 auto}
+.grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:4px auto 10px}
+.sheet h2{font-size:20px;margin:0 0 4px}
+.sheet .lead{color:var(--muted);font-size:14px;margin:0 0 10px}
+.q{font-size:14px;font-weight:700;margin:14px 0 6px;color:var(--muted)}
+.picks{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.picks.han{grid-template-columns:repeat(4,minmax(0,1fr))}
+.pick{min-height:48px;border-radius:11px;border:1.5px solid var(--line);background:var(--bg);font-size:15px;font-weight:700;padding:4px;line-height:1.2}
+.pick small{display:block;font-size:11px;font-weight:500;color:var(--muted)}
+.pick[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.pick[aria-pressed="true"] small{color:var(--accent-ink);opacity:.85}
+.pick:disabled{opacity:.3}
+.preview{margin-top:14px;background:var(--accent-soft);border-radius:12px;padding:12px 14px;font-size:14px}
+.preview .row{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
+.preview .row span:last-child{font-family:var(--num);font-variant-numeric:tabular-nums;white-space:nowrap}
+.preview .sum{border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-weight:700;font-size:16px}
+.preview .sum span:last-child{color:var(--plus)}
+.preview .hint{color:var(--muted);font-size:13px}
+.preview .next{margin-top:6px;color:var(--fg);font-size:13px}
+.sheet .go{width:100%;margin-top:14px}
+.sheet .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.sheet .row2 .big{margin:0}
+.danger{background:var(--minus)!important;color:var(--surface)!important}
+.menu{display:grid;gap:8px;margin-top:8px}
+.menu button{min-height:52px;border-radius:12px;border:1px solid var(--line);background:var(--bg);text-align:left;padding:8px 14px;font-weight:700}
+.menu button small{display:block;font-weight:500;color:var(--muted);font-size:13px}
+.names{display:grid;gap:8px;margin-top:6px}
+.names label{display:grid;grid-template-columns:3.2em 1fr;align-items:center;gap:8px;font-size:14px;color:var(--muted)}
+.names input{font:inherit;min-width:0;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.log{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:6px}
+.log li{background:var(--bg);border-radius:10px;padding:8px 12px;font-size:14px}
+.log li b{display:block;font-size:12px;color:var(--muted);font-weight:500}
+.log .d{display:flex;gap:10px;flex-wrap:wrap;font-family:var(--num);font-size:12.5px;margin-top:2px}
+.log .d .p{color:var(--plus)}.log .d .m{color:var(--minus)}
+.rank{list-style:none;padding:0;margin:8px 0;display:grid;gap:6px}
+.rank li{display:grid;grid-template-columns:2.4em 1fr auto;align-items:center;gap:8px;background:var(--bg);border-radius:12px;padding:10px 14px}
+.rank li:first-child{background:var(--gold-soft)}
+.rank .no{font-weight:700;font-size:18px;color:var(--accent)}
+.rank li:first-child .no{color:var(--gold)}
+.rank .sc{font-weight:600}
+.toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top,0px));z-index:40;background:var(--fg);color:var(--bg);border-radius:99px;padding:9px 16px;font-size:14px;max-width:calc(100% - 32px);text-align:center}
+.endband{margin-top:12px;background:var(--gold-soft);border:1.5px solid var(--gold);border-radius:14px;padding:12px 14px}
+.endband b{color:var(--gold)}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .18s ease-out}@keyframes up{from{transform:translateY(24px);opacity:.6}}}
+</style>
+</head>
+<body>
+
+
+<div class="app">
+  <div class="bar">
+    <h1>리치마작 점수판<small>동풍전 · 25,000점 시작 · 간이 점수표</small></h1>
+    <div class="acts">
+      <a class="iconbtn" href="index.html">룰북</a>
+      <button class="iconbtn" id="b-undo" type="button">되돌리기</button>
+      <button class="iconbtn" id="b-menu" type="button">메뉴</button>
+    </div>
+  </div>
+
+  <div class="table" id="table"></div>
+  <div id="endband"></div>
+
+  <div class="strip">
+    <div class="t">다음 화료 보너스 <span id="bonus-hint"></span></div>
+    <div class="bonus">
+      <div><b>본장 (친 옆 100점봉)</b><span id="bn-honba"></span></div>
+      <div><b>공탁 (리치봉)</b><span id="bn-pot"></span></div>
+    </div>
+  </div>
+  <div class="strip">
+    <div class="t">최근 기록 <span><button class="iconbtn" id="b-log" type="button" style="min-height:30px;padding:2px 10px;font-size:13px">전체 보기</button></span></div>
+    <p class="last" id="last"></p>
+  </div>
+</div>
+
+<div class="dock"><div class="in">
+  <button class="big" id="b-ron" type="button">론</button>
+  <button class="big" id="b-tsumo" type="button">쯔모</button>
+  <button class="big alt" id="b-draw" type="button">유국</button>
+</div></div>
+
+<div class="shade" id="shade" hidden></div>
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="in" id="sheet-in"></div></div>
+<div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+'use strict';
+const KEY='riichi-scoreboard-v2', UKEY='riichi-scoreboard-v2-undo';
+const WIND=['동','남','서','북'];
+const HAN=[ // key, label, small, [자론, 자쯔모(자), 자쯔모(친), 친론, 친쯔모(각)]
+ ['1','1판','',[1000,300,500,1500,500]],
+ ['2','2판','',[2000,500,1000,2900,1000]],
+ ['3','3판','',[3900,1000,2000,5800,2000]],
+ ['4','만관','4~5판',[8000,2000,4000,12000,4000]],
+ ['6','하네만','6~7판',[12000,3000,6000,18000,6000]],
+ ['8','배만','8~10판',[16000,4000,8000,24000,8000]],
+ ['11','삼배만','11~12판',[24000,6000,12000,36000,12000]],
+ ['13','역만','13판 이상',[32000,8000,16000,48000,16000]]
+];
+const HT=Object.fromEntries(HAN.map(h=>[h[0],h]));
+const $=id=>document.getElementById(id);
+const f=n=>Math.abs(n).toLocaleString('ko-KR');
+const sg=n=>n>0?'+'+f(n):n<0?'−'+f(n):'0';
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+const fresh=(names,first)=>({names:names||['플레이어 1','플레이어 2','플레이어 3','플레이어 4'],scores:[25000,25000,25000,25000],first:first||0,dealer:first||0,round:1,honba:0,pot:0,riichi:[false,false,false,false],deltas:null,log:[],ended:false,endReason:'',yame:false});
+let s, undo=[];
+function load(){
+  try{const v=JSON.parse(localStorage.getItem(KEY)); if(v&&Array.isArray(v.scores)&&v.scores.length===4) s=v;}catch(e){}
+  try{const u=JSON.parse(localStorage.getItem(UKEY)); if(Array.isArray(u)) undo=u;}catch(e){}
+  if(!s) s=fresh();
+}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(s));localStorage.setItem(UKEY,JSON.stringify(undo));}catch(e){}}
+function checkpoint(){undo.push(JSON.stringify(s)); if(undo.length>40) undo.shift();}
+const nm=i=>s.names[i]||('플레이어 '+(i+1));
+const windOf=i=>WIND[(i-s.dealer+4)%4];
+const roundName=()=>`동${s.round}국 ${s.honba}본장`;
+
+/* ---------- 정산 계산 ---------- */
+function calcWin(kind,w,l,hk){
+  const t=HT[hk][3], oya=w===s.dealer, d=[0,0,0,0], rows=[];
+  if(kind==='ron'){
+    const base=oya?t[3]:t[0], hb=s.honba*300;
+    d[l]-=base+hb; d[w]+=base+hb;
+    rows.push([`${nm(l)} → ${nm(w)}`, f(base)+(hb?` + 본장 ${f(hb)}`:'')]);
+  } else {
+    for(let i=0;i<4;i++){ if(i===w) continue;
+      const base=oya?t[4]:(i===s.dealer?t[2]:t[1]), hb=s.honba*100;
+      d[i]-=base+hb; d[w]+=base+hb;
+      rows.push([`${nm(i)}${i===s.dealer?' (친)':''}`, f(base)+(hb?` + 본장 ${f(hb)}`:'')]);
+    }
+  }
+  if(s.pot) { d[w]+=s.pot*1000; rows.push([`공탁 리치봉 ${s.pot}개`, '+'+f(s.pot*1000)]); }
+  return {d,rows,total:d[w]};
+}
+function calcDraw(ten){
+  const n=ten.filter(Boolean).length, d=[0,0,0,0];
+  if(n>0&&n<4){ for(let i=0;i<4;i++) d[i]=ten[i]?3000/n:-3000/(4-n); }
+  return d;
+}
+function topIndex(sc){ // 동점이면 첫 친부터 자리 순서가 앞선 사람
+  let best=-1,bi=-1; for(let k=0;k<4;k++){const i=(s.first+k)%4; if(sc[i]>best){best=sc[i];bi=i;}} return bi;
+}
+
+/* ---------- 상태 변경 ---------- */
+function applyDeltas(d){ for(let i=0;i<4;i++) s.scores[i]+=d[i]; s.deltas=d; }
+function addLog(txt,d){ s.log.unshift({r:roundName(),t:txt,d:d||null}); if(s.log.length>200) s.log.length=200; }
+function advance(keep){
+  s.riichi=[false,false,false,false];
+  const was4=s.round===4;
+  if(!keep){ s.dealer=(s.dealer+1)%4; s.round++; }
+  if(s.scores.some(x=>x<0)) return endGame('들통 (0점 미만)');
+  if(s.round>4) return endGame('동4국 종료');
+  if(keep && was4 && s.scores[s.dealer]>Math.max(...s.scores.filter((_,i)=>i!==s.dealer))) s.yame=true;
+}
+function endGame(reason){
+  s.ended=true; s.endReason=reason; s.yame=false;
+  if(s.pot){ const t=topIndex(s.scores); s.scores[t]+=s.pot*1000; addLog(`남은 공탁 ${f(s.pot*1000)}점 → ${nm(t)}`); s.pot=0; }
+  addLog('게임 종료 · '+reason);
+}
+function doWin(kind,w,l,hk){
+  checkpoint();
+  const r=calcWin(kind,w,l,hk);
+  const before=roundName();
+  applyDeltas(r.d);
+  addLog(`${nm(w)} ${kind==='ron'?'론 ← '+nm(l):'쯔모'} · ${HT[hk][1]} · +${f(r.total)}`, r.d);
+  s.pot=0;
+  const keep=w===s.dealer;
+  s.honba=keep?s.honba+1:0;
+  advance(keep);
+  close(); render(); toast(`${before} · ${nm(w)} +${f(r.total)}`);
+  if(s.yame) openYame(); else if(s.ended) openEnd();
+}
+function doDraw(ten){
+  checkpoint();
+  const d=calcDraw(ten);
+  applyDeltas(d);
+  const tn=ten.map((v,i)=>v?nm(i):null).filter(Boolean);
+  addLog(`유국 · 텐파이: ${tn.length?tn.join(', '):'없음'}`, d);
+  s.honba++;
+  advance(ten[s.dealer]);
+  close(); render(); toast('유국 정산 완료');
+  if(s.yame) openYame(); else if(s.ended) openEnd();
+}
+function doAbort(kind){
+  checkpoint();
+  s.deltas=[0,0,0,0];
+  addLog(`도중 유국 · ${kind}`);
+  s.riichi=[false,false,false,false]; s.honba++;
+  close(); render(); toast('도중 유국: 본장 +1, 친 유지');
+}
+function doChombo(c){
+  checkpoint();
+  const d=[0,0,0,0];
+  // 이번 국 리치봉은 돌려줌
+  let back=0; for(let i=0;i<4;i++) if(s.riichi[i]){ d[i]+=1000; back++; }
+  s.pot-=back;
+  for(let i=0;i<4;i++){ if(i===c) continue; const amt=c===s.dealer?4000:(i===s.dealer?4000:2000); d[i]+=amt; d[c]-=amt; }
+  applyDeltas(d); s.riichi=[false,false,false,false];
+  addLog(`촌보 · ${nm(c)} 만관 지불, 같은 국 다시`, d);
+  if(s.scores.some(x=>x<0)) endGame('들통 (0점 미만)');
+  close(); render(); toast(`${nm(c)} 촌보 정산`);
+  if(s.ended) openEnd();
+}
+function toggleRiichi(i){
+  if(s.ended) return;
+  if(s.riichi[i]){ // 잘못 누른 리치 취소
+    checkpoint(); s.riichi[i]=false; s.pot--; s.scores[i]+=1000; s.deltas=null; if(s.log[0]&&s.log[0].t.startsWith(nm(i)+' 리치')) s.log.shift(); render(); toast(`${nm(i)} 리치 취소`); return;
+  }
+  if(s.scores[i]<1000) return toast(`${nm(i)}: 점수가 1,000점보다 적어 리치할 수 없습니다`);
+  checkpoint(); s.riichi[i]=true; s.pot++; s.scores[i]-=1000; s.deltas=null;
+  addLog(`${nm(i)} 리치 · 리치봉 1,000점 공탁`, [0,1,2,3].map(k=>k===i?-1000:0));
+  render(); toast(`${nm(i)} 리치 · −1,000`);
+}
+
+/* ---------- 화면 ---------- */
+function render(){
+  const tb=$('table'); let h='';
+  for(let i=0;i<4;i++){
+    const pos=(i-s.first+4)%4, oya=i===s.dealer, d=s.deltas?s.deltas[i]:null;
+    h+=`<div class="seat${oya?' oya':''}${s.scores[i]<0?' neg':''}" data-pos="${pos}">
+      <div class="wind"><b>${windOf(i)}</b>${oya?'<span class="oyatag">친</span>':''}</div>
+      <div class="pname">${esc(nm(i))}</div>
+      <div class="score num">${s.scores[i]<0?'−':''}${f(s.scores[i])}</div>
+      <div class="delta num ${d>0?'p':d<0?'m':'z'}">${d===null?'&nbsp;':sg(d)}</div>
+      <button type="button" class="rbtn" data-r="${i}" aria-pressed="${s.riichi[i]}" ${s.ended?'disabled':''}>${s.riichi[i]?'리치 중':'리치'}</button>
+    </div>`;
+  }
+  const hs='<span class="stk h"></span>'.repeat(Math.min(s.honba,8)), ps='<span class="stk"></span>'.repeat(Math.min(s.pot,8));
+  h+=`<div class="mid"><div class="rd">${s.ended?'종료':'동'+s.round+'국'}</div>
+     <div class="sub">${s.honba}본장${hs?`<div class="sticks" aria-hidden="true">${hs}</div>`:''}</div>
+     <div class="sub">공탁 ${s.pot}개${ps?`<div class="sticks" aria-hidden="true">${ps}</div>`:''}</div></div>`;
+  tb.innerHTML=h;
+  $('bn-honba').innerHTML=`${s.honba}개 → <span class="num">+${f(s.honba*300)}</span>`;
+  $('bn-pot').innerHTML=`${s.pot}개 → <span class="num">+${f(s.pot*1000)}</span>`;
+  $('bonus-hint').textContent=s.honba?`론: 버린 사람이 +${f(s.honba*300)} · 쯔모: 3명이 ${f(s.honba*100)}씩`:'본장 0개';
+  const L=s.log[0];
+  $('last').innerHTML=L?`<b style="color:var(--muted);font-weight:500">${esc(L.r)}</b> · ${esc(L.t)}`:'아직 기록이 없습니다. 화료하면 아래 론·쯔모 버튼을 누르세요.';
+  $('endband').innerHTML=s.ended?`<div class="endband"><b>게임 종료</b> · ${esc(s.endReason)} <button class="iconbtn" type="button" id="b-result" style="float:right;min-height:30px;padding:2px 10px">순위 보기</button></div>`:'';
+  if(s.ended) $('b-result').onclick=openEnd;
+  ['b-ron','b-tsumo','b-draw'].forEach(id=>$(id).disabled=s.ended);
+  $('b-undo').disabled=!undo.length;
+  save();
+}
+
+let toastT;
+function toast(t){const el=$('toast'); el.textContent=t; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>el.hidden=true,2600);}
+function open(html,setup){
+  const old=$('sheet-in'), fresh=document.createElement('div'); fresh.className='in'; fresh.id='sheet-in'; old.replaceWith(fresh);
+  fresh.innerHTML='<div class="grab"></div>'+html;
+  $('sheet').hidden=false; $('shade').hidden=false;
+  setup&&setup($('sheet-in'));
+  const fbtn=$('sheet-in').querySelector('button'); fbtn&&fbtn.focus({preventScroll:true});
+}
+function close(){$('sheet').hidden=true;$('shade').hidden=true;}
+$('shade').onclick=()=>{ if(!s.yame) close(); };
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('sheet').hidden&&!s.yame) close();});
+
+const pickRow=(name,ex)=>[0,1,2,3].map(i=>`<button type="button" class="pick" data-${name}="${i}" aria-pressed="false" ${ex===i?'disabled':''}>${esc(nm(i))}<small>${windOf(i)}${i===s.dealer?' · 친':''}</small></button>`).join('');
+const hanRow=()=>HAN.map(h=>`<button type="button" class="pick" data-han="${h[0]}" aria-pressed="false">${h[1]}${h[2]?`<small>${h[2]}</small>`:''}</button>`).join('');
+
+function openWin(kind){
+  if(s.ended) return;
+  const st={w:null,l:null,h:null};
+  open(`<h2 id="sheet-title">${kind==='ron'?'론':'쯔모'} 정산</h2><p class="lead">${roundName()} · 본장과 공탁은 자동으로 더합니다.</p>
+    <div class="q">누가 화료했나요?</div><div class="picks" id="pw">${pickRow('w')}</div>
+    ${kind==='ron'?'<div class="q">누가 버렸나요? (방총)</div><div class="picks" id="pl">'+pickRow('l')+'</div>':''}
+    <div class="q">판수</div><div class="picks han" id="ph">${hanRow()}</div>
+    <div class="preview" id="pv"></div>
+    <div class="row2"><button type="button" class="big alt" id="c-cancel">취소</button><button type="button" class="big" id="c-ok" disabled>정산하기</button></div>`,
+  root=>{
+    const upd=()=>{
+      root.querySelectorAll('[data-w]').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.w===st.w));
+      root.querySelectorAll('[data-l]').forEach(b=>{b.setAttribute('aria-pressed',+b.dataset.l===st.l); b.disabled=+b.dataset.l===st.w;});
+      root.querySelectorAll('[data-han]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.han===st.h));
+      const ready=st.w!==null&&st.h!==null&&(kind==='tsumo'||(st.l!==null&&st.l!==st.w));
+      $('c-ok').disabled=!ready;
+      if(!ready){ $('pv').innerHTML=`<div class="hint">${st.w===null?'화료한 사람':kind==='ron'&&st.l===null?'버린 사람':'판수'}을(를) 고르면 주고받을 점수가 여기 나옵니다.</div>`; return; }
+      const r=calcWin(kind,st.w,st.l,st.h), keep=st.w===s.dealer;
+      $('pv').innerHTML=r.rows.map(x=>`<div class="row"><span>${esc(x[0])}</span><span>${x[1]}</span></div>`).join('')+
+        `<div class="row sum"><span>${esc(nm(st.w))} 받는 합계</span><span>+${f(r.total)}</span></div>`+
+        `<div class="next">다음: ${keep?`연짱 · 동${s.round}국 ${s.honba+1}본장 (친 유지)`:(s.round<4?`동${s.round+1}국 0본장 · 친 → ${esc(nm((s.dealer+1)%4))}`:'게임 종료')}</div>`;
+    };
+    root.addEventListener('click',e=>{
+      const b=e.target.closest('button'); if(!b||b.disabled) return;
+      if(b.dataset.w!==undefined){st.w=+b.dataset.w; if(st.l===st.w) st.l=null;}
+      else if(b.dataset.l!==undefined) st.l=+b.dataset.l;
+      else if(b.dataset.han!==undefined) st.h=b.dataset.han;
+      else if(b.id==='c-cancel') return close();
+      else if(b.id==='c-ok') return doWin(kind,st.w,st.l,st.h);
+      upd();
+    });
+    upd();
+  });
+}
+function openDraw(){
+  if(s.ended) return;
+  const ten=[false,false,false,false];
+  open(`<h2 id="sheet-title">유국 정산</h2><p class="lead">패산이 다 떨어졌을 때. 텐파이인 사람을 모두 누르세요.</p>
+    <div class="q">텐파이</div><div class="picks" id="pt">${[0,1,2,3].map(i=>`<button type="button" class="pick" data-t="${i}" aria-pressed="false">${esc(nm(i))}<small>${windOf(i)}${i===s.dealer?' · 친':''}</small></button>`).join('')}</div>
+    <div class="preview" id="pv"></div>
+    <div class="row2"><button type="button" class="big alt" id="c-cancel">취소</button><button type="button" class="big" id="c-ok">정산하기</button></div>
+    <div class="q" style="margin-top:20px">도중 유국 (점수 이동 없음 · 본장 +1 · 친 유지)</div>
+    <div class="picks">${['구종구패','사풍연타','사깡산라','사가리치'].map(k=>`<button type="button" class="pick" data-ab="${k}">${k}</button>`).join('')}</div>`,
+  root=>{
+    const upd=()=>{
+      root.querySelectorAll('[data-t]').forEach(b=>b.setAttribute('aria-pressed',ten[+b.dataset.t]));
+      const d=calcDraw(ten), n=ten.filter(Boolean).length;
+      $('pv').innerHTML=(n===0||n===4?`<div class="hint">텐파이 ${n}명: 점수를 주고받지 않습니다.</div>`:
+        [0,1,2,3].map(i=>`<div class="row"><span>${esc(nm(i))} ${ten[i]?'(텐파이)':'(노텐)'}</span><span style="color:var(${d[i]>0?'--plus':'--minus'})">${sg(d[i])}</span></div>`).join(''))+
+        `<div class="next">다음: ${ten[s.dealer]?`친 텐파이 → 연짱 · 동${s.round}국 ${s.honba+1}본장`:(s.round<4?`친 노텐 → 동${s.round+1}국 ${s.honba+1}본장 · 친 → ${esc(nm((s.dealer+1)%4))}`:'친 노텐 → 게임 종료')}${s.pot?` · 공탁 ${s.pot}개는 다음 국으로`:''}</div>`;
+    };
+    root.addEventListener('click',e=>{
+      const b=e.target.closest('button'); if(!b) return;
+      if(b.dataset.t!==undefined){ten[+b.dataset.t]=!ten[+b.dataset.t]; upd();}
+      else if(b.dataset.ab) doAbort(b.dataset.ab);
+      else if(b.id==='c-cancel') close();
+      else if(b.id==='c-ok') doDraw(ten);
+    });
+    upd();
+  });
+}
+function openYame(){
+  open(`<h2 id="sheet-title">동4국 · 친이 1위입니다</h2><p class="lead">${esc(nm(s.dealer))}(친)이 1위라서, 연짱하지 않고 여기서 끝낼 수 있습니다.</p>
+    <div class="row2"><button type="button" class="big alt" id="y-go">연짱 계속</button><button type="button" class="big" id="y-end">여기서 종료</button></div>`,
+  root=>{
+    $('y-go').onclick=()=>{s.yame=false; close(); render(); toast(`연짱 · ${roundName()}`);};
+    $('y-end').onclick=()=>{checkpoint(); endGame('동4국 친 1위로 종료'); close(); render(); openEnd();};
+  });
+}
+function openEnd(){
+  const order=[0,1,2,3].map(k=>(s.first+k)%4).sort((a,b)=>s.scores[b]-s.scores[a]);
+  open(`<h2 id="sheet-title">최종 순위</h2><p class="lead">${esc(s.endReason)}</p>
+    <ol class="rank">${order.map((i,k)=>`<li><span class="no">${k+1}위</span><span>${esc(nm(i))}</span><span class="sc num">${s.scores[i]<0?'−':''}${f(s.scores[i])}</span></li>`).join('')}</ol>
+    <p class="lead">동점이면 첫 친부터 자리 순서가 앞선 사람이 위입니다. 남은 공탁은 1위가 가져갔습니다.</p>
+    <div class="row2"><button type="button" class="big alt" id="e-log">기록 보기</button><button type="button" class="big" id="e-new">새 게임</button></div>`,
+  ()=>{ $('e-log').onclick=openLog; $('e-new').onclick=openNew; });
+}
+function openLog(){
+  open(`<h2 id="sheet-title">진행 기록</h2><p class="lead">최근 것이 위에 있습니다. 잘못 입력했다면 ‘되돌리기’를 누르세요.</p>
+    <ul class="log">${s.log.length?s.log.map(L=>`<li><b>${esc(L.r)}</b>${esc(L.t)}${L.d?`<div class="d">${L.d.map((v,i)=>v?`<span class="${v>0?'p':'m'}">${esc(nm(i))} ${sg(v)}</span>`:'').join('')}</div>`:''}</li>`).join(''):'<li>아직 기록이 없습니다.</li>'}</ul>
+    <button type="button" class="big alt go" id="l-close">닫기</button>`,()=>{$('l-close').onclick=close;});
+}
+function openMenu(){
+  open(`<h2 id="sheet-title">메뉴</h2>
+    <div class="menu">
+      <button type="button" id="m-names">참가자 이름 바꾸기<small>지금 게임의 점수는 그대로</small></button>
+      <button type="button" id="m-chombo" ${s.ended?'disabled':''}>촌보 정산<small>반칙한 사람이 만관 지불 · 같은 국 다시</small></button>
+      <button type="button" id="m-log">진행 기록 전체 보기</button>
+      <button type="button" id="m-new">새 게임 시작<small>점수와 기록을 지우고 처음부터</small></button>
+    </div>
+    <button type="button" class="big alt go" id="m-close">닫기</button>`,
+  ()=>{
+    $('m-names').onclick=openNames; $('m-log').onclick=openLog; $('m-new').onclick=openNew; $('m-close').onclick=close;
+    $('m-chombo').onclick=openChombo;
+  });
+}
+function namesForm(){
+  return `<div class="names">${[0,1,2,3].map(k=>{const i=(s.first+k)%4; return `<label for="nm${i}">${['동','남','서','북'][k]} 자리<input id="nm${i}" maxlength="10" value="${esc(nm(i))}" autocomplete="off"></label>`;}).join('')}</div>`;
+}
+function openNames(){
+  open(`<h2 id="sheet-title">참가자 이름</h2><p class="lead">자리 정하기에서 뽑은 바람 순서대로 적으세요.</p>${namesForm()}
+    <div class="row2"><button type="button" class="big alt" id="n-cancel">취소</button><button type="button" class="big" id="n-ok">저장</button></div>`,
+  ()=>{
+    $('n-cancel').onclick=close;
+    $('n-ok').onclick=()=>{for(let i=0;i<4;i++){const v=$('nm'+i).value.trim(); s.names[i]=v||('플레이어 '+(i+1));} close(); render(); toast('이름을 저장했습니다');};
+  });
+}
+function openNew(){
+  open(`<h2 id="sheet-title">새 게임</h2><p class="lead">자리 정하기에서 <b>동</b>을 뽑은 사람이 첫 친입니다. 동 자리부터 반시계 방향(오른쪽 사람) 순서로 적으세요.</p>${namesForm()}
+    <p class="lead" style="margin-top:10px">지금 점수와 기록은 모두 지워집니다. 되돌리기로 이전 게임을 다시 불러올 수 있습니다.</p>
+    <div class="row2"><button type="button" class="big alt" id="n-cancel">취소</button><button type="button" class="big danger" id="n-ok">새 게임 시작</button></div>`,
+  ()=>{
+    $('n-cancel').onclick=close;
+    $('n-ok').onclick=()=>{
+      const order=[0,1,2,3].map(k=>(s.first+k)%4).map(i=>$('nm'+i).value.trim());
+      checkpoint();
+      s=fresh(order.map((v,k)=>v||('플레이어 '+(k+1))),0);
+      close(); render(); toast('새 게임 · 동1국 0본장');
+    };
+  });
+}
+function openChombo(){
+  open(`<h2 id="sheet-title">촌보 정산</h2><p class="lead">반칙한 사람이 만관만큼 냅니다. 자는 친에게 4,000 · 자에게 2,000씩, 친은 3명에게 4,000씩. 이번 국 리치봉은 돌려주고 같은 국을 다시 합니다.</p>
+    <div class="q">누가 촌보했나요?</div><div class="picks">${pickRow('c')}</div>
+    <button type="button" class="big alt go" id="c-cancel">취소</button>`,
+  root=>{
+    root.addEventListener('click',e=>{const b=e.target.closest('button'); if(!b) return; if(b.dataset.c!==undefined) doChombo(+b.dataset.c); else if(b.id==='c-cancel') close();});
+  });
+}
+
+/* ---------- 이벤트 ---------- */
+$('table').addEventListener('click',e=>{const b=e.target.closest('[data-r]'); if(b) toggleRiichi(+b.dataset.r);});
+$('b-ron').onclick=()=>openWin('ron');
+$('b-tsumo').onclick=()=>openWin('tsumo');
+$('b-draw').onclick=openDraw;
+$('b-menu').onclick=openMenu;
+$('b-log').onclick=openLog;
+$('b-undo').onclick=()=>{ if(!undo.length) return; s=JSON.parse(undo.pop()); close(); render(); toast('직전 입력을 되돌렸습니다'); if(s.yame) openYame(); };
+
+load(); render();
+if(s.yame) openYame();
+try{ navigator.wakeLock&&navigator.wakeLock.request('screen').catch(()=>{}); }catch(e){}
+})();
+</script>
+
+</body>
+</html>

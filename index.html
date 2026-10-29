@@ -1,5 +1,992 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>리치마작 점수판</title><style>
-:root{font-family:system-ui,'Malgun Gothic',sans-serif;color:#f2f4f3;background:#102522}*{box-sizing:border-box}body{margin:0;padding:20px}main{max-width:820px;margin:auto}h1{font-size:25px;margin:0 0 8px}h2{font-size:18px}p,.hint{color:#b6cac4;font-size:14px}.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.badge{background:#274b43;border-radius:12px;padding:10px 16px;font-weight:700}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:18px 0}.seat{border:2px solid #31594e;border-radius:14px;padding:15px;background:#18352e}.seat.dealer{border-color:#e5bd66}.seat .name{font-size:17px;font-weight:700}.seat .score{font-size:27px;font-weight:800;margin:9px 0}.seat small{color:#c4d2cd}.controls{display:flex;gap:8px;flex-wrap:wrap}.panel{background:#19362f;padding:17px;border-radius:15px;margin:12px 0}button,select,input{font:inherit;border-radius:9px;padding:11px 13px;border:1px solid #66867c;min-height:44px}button{background:#e6bb66;color:#1b2925;font-weight:750;cursor:pointer}button.secondary{background:#2c5146;color:#f4f5f1}button:disabled{opacity:.45;cursor:not-allowed}select,input{background:#102923;color:white;max-width:100%}label{display:flex;flex-direction:column;gap:5px;font-size:14px;margin:7px 0}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}.row>label{flex:1;min-width:125px}.hidden{display:none!important}.notice{margin-top:10px;color:#f4d79e;min-height:20px}ol{padding-left:23px;line-height:1.8;max-height:210px;overflow:auto}hr{border:0;border-top:1px solid #406157;margin:16px 0}@media(max-width:420px){body{padding:12px}.seat{padding:11px}.seat .score{font-size:22px}.badge{font-size:14px}}
-</style></head><body><main><div class="top"><div><h1>🀄 리치마작 점수판</h1><p>동풍전 · 시작 25,000점 · 간이 점수표</p></div><div class="badge" id="round">동1국 · 0본장</div></div><div class="grid" id="seats"></div><div class="panel"><div class="top"><h2>리치 선언</h2><span class="hint" id="pot"></span></div><div class="row"><label>선언자<select id="riichiSeat"></select></label><button id="riichi">리치 (−1,000점)</button></div><p class="hint">리치봉은 공탁으로 보관하고 다음 화료자가 받습니다.</p></div><div class="panel"><h2>화료 정산</h2><div class="row"><label>화료자<select id="winner"></select></label><label>방식<select id="method"><option value="ron">론</option><option value="tsumo">쯔모</option></select></label><label id="loserWrap">방총자<select id="loser"></select></label><label>판수<select id="han"><option value="1">1판</option><option value="2">2판</option><option value="3">3판</option><option value="4">4판</option><option value="5">5판</option><option value="6">6판</option><option value="7">7판</option><option value="8">8판</option><option value="9">9판</option><option value="10">10판</option><option value="11">11판</option><option value="12">12판</option><option value="13">역만 (단일)</option></select></label></div><p class="hint">4~5판 만관 · 13판은 역만으로 처리 · 모든 일반 화료 30부 고정</p><button id="win">화료 확정 · 다음 국 진행</button><div class="notice" id="message" aria-live="polite"></div></div><div class="panel"><h2>유국 정산</h2><p>텐파이인 사람을 선택하세요. (0명 또는 4명이면 점수 이동 없음)</p><div class="row" id="tenpai"></div><div class="row"><button id="draw" class="secondary">유국 확정 · 다음 국 진행</button><button id="abort" class="secondary">도중 유국 (정산 없음)</button></div></div><div class="panel"><div class="top"><h2>진행 기록</h2><div class="controls"><button class="secondary" id="undo">되돌리기</button><button class="secondary" id="reset">새 게임</button></div></div><ol id="history"></ol><p class="hint">브라우저에 자동 저장됩니다. 다른 기기와는 동기화되지 않습니다.</p></div></main><script>
-(()=>{'use strict';const KEY='riichi-house-scoreboard-v1', names=['동','남','서','북'];let s;const $=id=>document.getElementById(id);const initial=()=>({scores:[25000,25000,25000,25000],dealer:0,round:1,honba:0,pot:0,declared:[],history:[],ended:false});try{s=JSON.parse(localStorage.getItem(KEY))||initial();if(!Array.isArray(s.scores)||s.scores.length!==4||!Array.isArray(s.history))s=initial()}catch{s=initial()}let snapshots=[];const fmt=n=>n.toLocaleString('ko-KR');const save=()=>localStorage.setItem(KEY,JSON.stringify(s));const label=i=>names[(i-s.dealer+4)%4]+'가';const who=i=>names[i];const opt=(el,exclude=-1)=>{const old=el.value;el.innerHTML='';for(let i=0;i<4;i++){if(i===exclude)continue;const o=document.createElement('option');o.value=i;o.textContent=who(i)+(i===s.dealer?' 👑':'');el.append(o)}if([...el.options].some(x=>x.value===old))el.value=old};const record=msg=>{s.history.unshift(msg);s.history=s.history.slice(0,100)};const checkpoint=()=>{snapshots.push(JSON.stringify(s));if(snapshots.length>40)snapshots.shift()};function next(keep){if(keep)s.honba++;else{s.dealer=(s.dealer+1)%4;s.round++;s.honba=0}if(s.round>4){s.ended=true;const max=Math.max(...s.scores);const first=s.scores.indexOf(max);if(s.pot){s.scores[first]+=s.pot*1000;record('종료: 남은 공탁 '+fmt(s.pot*1000)+'점 → '+who(first));s.pot=0}record('동풍전 종료')}s.declared=[]}function render(){const round=s.ended?'게임 종료':'동'+s.round+'국 · '+s.honba+'본장';$('round').textContent=round;$('pot').textContent='공탁 '+s.pot+'개 ('+fmt(s.pot*1000)+'점)';$('seats').innerHTML='';for(let i=0;i<4;i++){const e=document.createElement('div');e.className='seat'+(i===s.dealer?' dealer':'');const ri=s.declared.includes(i)?' · 리치 선언':'';e.innerHTML='<div class="name">'+who(i)+(i===s.dealer?' 👑':'')+'</div><div class="score">'+fmt(s.scores[i])+'점</div><small>'+ri.replace(/^ · /,'')+'</small>';$('seats').append(e)}opt($('riichiSeat'));opt($('winner'));opt($('loser'),Number($('winner').value));$('riichiSeat').disabled=s.ended;$('riichi').disabled=s.ended;$('win').disabled=s.ended;$('draw').disabled=s.ended;$('abort').disabled=s.ended;$('undo').disabled=!snapshots.length;$('history').innerHTML='';for(const item of s.history){const li=document.createElement('li');li.textContent=item;$('history').append(li)}if(!s.history.length)$('history').textContent='아직 기록이 없습니다.';$('loserWrap').classList.toggle('hidden',$('method').value==='tsumo');save()};const notify=t=>$('message').textContent=t;const table={1:[1000,300,500,1500,500],2:[2000,500,1000,2900,1000],3:[3900,1000,2000,5800,2000],4:[8000,2000,4000,12000,4000],5:[8000,2000,4000,12000,4000],6:[12000,3000,6000,18000,6000],7:[12000,3000,6000,18000,6000],8:[16000,4000,8000,24000,8000],9:[16000,4000,8000,24000,8000],10:[16000,4000,8000,24000,8000],11:[24000,6000,12000,36000,12000],12:[24000,6000,12000,36000,12000],13:[32000,8000,16000,48000,16000]};$('winner').addEventListener('change',()=>opt($('loser'),Number($('winner').value)));$('method').addEventListener('change',()=> $('loserWrap').classList.toggle('hidden',$('method').value==='tsumo'));$('riichi').addEventListener('click',()=>{const i=Number($('riichiSeat').value);if(s.declared.includes(i))return notify('이미 리치를 선언했습니다.');if(s.scores[i]<1000)return notify('리치봉 1,000점이 부족합니다.');checkpoint();s.scores[i]-=1000;s.pot++;s.declared.push(i);record('동'+s.round+'국 '+s.honba+'본장: '+who(i)+' 리치 (−1,000)');notify('리치 선언을 기록했습니다.');render()});$('win').addEventListener('click',()=>{const w=Number($('winner').value),m=$('method').value,l=Number($('loser').value),h=Number($('han').value);if(m==='ron'&&w===l)return notify('화료자와 방총자는 달라야 합니다.');const t=table[h];if(!t)return notify('판수를 선택하세요.');checkpoint();let gain=0;if(m==='ron'){const amount=(w===s.dealer?t[3]:t[0])+s.honba*300;s.scores[l]-=amount;gain=amount}else{for(let i=0;i<4;i++){if(i===w)continue;const amount=(w===s.dealer?t[4]:(i===s.dealer?t[2]:t[1]))+s.honba*100;s.scores[i]-=amount;gain+=amount}}s.scores[w]+=gain+s.pot*1000;const detail='동'+s.round+'국 '+s.honba+'본장: '+who(w)+' '+(m==='ron'?'론 ← '+who(l):'쯔모')+' '+(h===13?'역만':h+'판')+' +'+fmt(gain)+(s.pot?' (공탁 +'+fmt(s.pot*1000)+')':'');record(detail);const keep=w===s.dealer;s.pot=0;next(keep);notify(detail);render()});function finishDraw(abort){checkpoint();if(abort){record('동'+s.round+'국 '+s.honba+'본장: 도중 유국');next(true)}else{const checked=[...document.querySelectorAll('#tenpai input:checked')].map(x=>Number(x.value)),n=checked.length;if(n>0&&n<4){const receive=3000/n,pay=3000/(4-n);for(let i=0;i<4;i++)s.scores[i]+=checked.includes(i)?receive:-pay}record('동'+s.round+'국 '+s.honba+'본장: 유국 (텐파이 '+(checked.map(who).join(', ')||'없음')+')');next(checked.includes(s.dealer))}document.querySelectorAll('#tenpai input').forEach(x=>x.checked=false);notify('유국을 정산했습니다.');render()}$('draw').addEventListener('click',()=>finishDraw(false));$('abort').addEventListener('click',()=>finishDraw(true));$('undo').addEventListener('click',()=>{if(!snapshots.length)return;s=JSON.parse(snapshots.pop());notify('직전 작업을 되돌렸습니다.');render()});$('reset').addEventListener('click',()=>{if(!confirm('점수와 기록을 모두 지우고 새 게임을 시작할까요?'))return;s=initial();snapshots=[];notify('새 게임을 시작했습니다.');render()});for(let i=0;i<4;i++){const label=document.createElement('label');label.style.flexDirection='row';label.style.alignItems='center';label.style.gap='6px';const input=document.createElement('input');input.type='checkbox';input.value=i;input.style.width='20px';input.style.height='20px';label.append(input,document.createTextNode(who(i)));$('tenpai').append(label)}render()})();
-</script></body></html>
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>리치마작 하우스 룰북</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@600;900&display=swap">
+<style>
+/* Layout: 파란 헤더 밴드 + 가로 스크롤 탭(요약·룰북·역·시작 방법·용어). 본문은 한 줄 컬럼, 모바일 우선 */
+:root{
+  --bg:#f6f8fb; --surface:#ffffff; --fg:#1b2230; --muted:#5b6475; --line:#dde3ec;
+  --felt:#2a72d1; --felt-ink:#ffffff; --accent:#2a72d1; --accent-soft:#edf3fc;
+  --red:#c2352b; --red-soft:#fbe9e6; --blue:#2a72d1;
+  --tile:#fbfaf3; --tile-edge:#c9c6b4; --tile-ink:#1b1b1b; --tile-back:#6fbfa2;
+  --pin:#2a62c9; --sou:#169448; --wred:#cf2e2e;
+  --display:"Noto Serif KR","Noto Serif CJK KR","Songti SC",serif;
+  --body:"IBM Plex Sans KR","Noto Sans CJK KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --tilefont:"Noto Serif KR","Noto Serif CJK KR","Songti SC","SimSun",serif;
+  --tw:26px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10141b; --surface:#171c25; --fg:#e3e8f0; --muted:#98a3b5; --line:#2a3240;
+  --felt:#1d4f93; --felt-ink:#eef4ff; --accent:#7eaaf0; --accent-soft:#1a2740;
+  --red:#ff7b6e; --red-soft:#3a1f1c; --blue:#7eaaf0;
+  --tile:#ecebe2; --tile-edge:#8d8b7c; --tile-back:#3f9c7c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10141b; --surface:#171c25; --fg:#e3e8f0; --muted:#98a3b5; --line:#2a3240;
+  --felt:#1d4f93; --felt-ink:#eef4ff; --accent:#7eaaf0; --accent-soft:#1a2740;
+  --red:#ff7b6e; --red-soft:#3a1f1c; --blue:#7eaaf0;
+  --tile:#ecebe2; --tile-edge:#8d8b7c; --tile-back:#3f9c7c; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.7;-webkit-text-size-adjust:100%}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--felt)}
+.wrap{max-width:860px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{text-wrap:balance}
+a{color:var(--accent)}
+b,strong{font-weight:700}
+.hl{color:var(--accent);font-weight:700}
+.warn{color:var(--red);font-weight:700}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* header */
+header.top{background:var(--felt);color:var(--felt-ink)}
+header.top .wrap{padding-block:30px 0}
+.eyebrow{font-size:12px;letter-spacing:.18em;text-transform:uppercase;opacity:.8}
+header.top h1{font-family:var(--display);font-weight:900;font-size:clamp(28px,6vw,44px);line-height:1.2;margin:6px 0 4px}
+header.top p.sub{margin:0;opacity:.9}
+.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:rgba(255,255,255,.22);border-radius:10px;overflow:hidden;margin:20px 0 0}
+.facts div{background:var(--felt);padding:8px 14px}
+.facts dt{font-size:12px;opacity:.8}
+.facts dd{margin:0;font-weight:700;font-size:16px}
+@media (max-width:560px){.facts{grid-template-columns:repeat(2,minmax(0,1fr))} header.top .wrap{padding-block:22px 0}}
+nav.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--felt)}
+nav.tabs .wrap{display:flex;gap:2px;padding-block:12px 0;overflow-x:auto;scrollbar-width:none}
+nav.tabs .wrap::-webkit-scrollbar{display:none}
+nav.tabs a{flex:none;color:var(--felt-ink);text-decoration:none;padding:9px 14px 11px;border-radius:10px 10px 0 0;font-weight:500;opacity:.85;white-space:nowrap;font-size:15px}
+nav.tabs a[aria-current="page"]{background:var(--bg);color:var(--fg);opacity:1;font-weight:700}
+nav.tabs a .k{font-size:11px;opacity:.7;margin-right:4px}
+nav.tabs a:focus-visible{outline:2px solid var(--felt-ink);outline-offset:-2px}
+
+main .wrap{padding-block:24px 72px}
+.view-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid var(--accent);padding-bottom:12px;margin-bottom:16px}
+.view-head h2{margin:0;font-family:var(--display);font-weight:900;font-size:26px;line-height:1.2}
+.view-head small{display:block;color:var(--muted);font-size:14px;font-weight:500;font-family:var(--body)}
+
+/* tiles */
+.hand{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:flex-end;margin:8px 0}
+.grp{display:flex;flex-direction:column;align-items:center;gap:2px}
+.grp .ts{display:flex;align-items:flex-end;gap:1px}
+.grp small{font-size:11px;color:var(--muted);line-height:1.3;text-align:center;max-width:9em}
+svg.tile{width:var(--tw);height:calc(var(--tw)*4/3);display:block;filter:drop-shadow(0 1.5px 0 var(--tile-edge))}
+svg.tile.side{width:calc(var(--tw)*4/3);height:var(--tw)}
+.tf{fill:var(--tile);stroke:var(--tile-edge);stroke-width:1}
+.tb{fill:var(--tile-back);stroke:var(--tile-edge);stroke-width:1}
+svg.tile.hi .tf,svg.tile.hi .tb{stroke:var(--blue);stroke-width:2.8}
+.tk{font-family:var(--tilefont);font-weight:900;fill:var(--tile-ink);text-anchor:middle}
+.tr{fill:var(--wred)} .tg{fill:var(--sou)}
+.ring{fill:none;stroke-width:1.5}
+.ring.b{stroke:var(--pin)} .ring.r{stroke:var(--wred)} .dot.b{fill:var(--pin)} .dot.r{fill:var(--wred)}
+.big{--tw:34px}
+@media (max-width:480px){.big{--tw:28px}}
+
+/* common blocks */
+.cards{display:grid;gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;min-width:0}
+.card h2{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 6px;font-family:var(--display);font-size:21px;font-weight:900}
+.card h2 .n{font-family:var(--body);font-size:13px;font-weight:700;background:var(--accent);color:var(--surface);border-radius:99px;width:24px;height:24px;display:inline-grid;place-items:center;flex:none;transform:translateY(-2px)}
+.card h2 small{font-family:var(--body);font-size:14px;color:var(--muted);font-weight:500}
+.card p{margin:4px 0}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:640px){.two{grid-template-columns:1fr}}
+.calls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+@media (max-width:520px){.calls{grid-template-columns:1fr}}
+.call{background:var(--accent-soft);border-radius:10px;padding:10px 12px;font-size:15px}
+.call b{color:var(--accent);margin-right:6px;font-family:var(--display);font-size:17px}
+.call.ron{background:var(--red-soft)} .call.ron b{color:var(--red)}
+.note{font-size:14px;color:var(--muted)}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--surface);border:1px dashed var(--line);border-radius:14px;padding:14px 18px;font-size:14px}
+.flow span.s{border:1px solid var(--line);border-radius:99px;padding:4px 12px;font-weight:700;background:var(--bg)}
+.flow i{font-style:normal;color:var(--muted)}
+
+.chipbar{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;margin-bottom:14px;scrollbar-width:none}
+.chipbar::-webkit-scrollbar{display:none}
+.chipbar a,.chipbar button{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:6px 13px;font-size:14px;text-decoration:none;color:var(--fg);cursor:pointer;white-space:nowrap}
+.chipbar a span{color:var(--accent);font-weight:700;margin-right:5px}
+.chipbar button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface);font-weight:700}
+section.ch{margin-top:52px;scroll-margin-top:72px}
+section.ch:first-of-type{margin-top:8px}
+section.ch>header{display:flex;align-items:center;gap:14px;border-bottom:2px solid var(--accent);padding-bottom:12px;margin-bottom:18px}
+.badge{flex:none;width:44px;height:44px;border-radius:50%;background:var(--accent);color:var(--surface);display:grid;place-items:center;font-weight:700;font-size:20px}
+section.ch h2{margin:0;font-family:var(--display);font-weight:900;font-size:25px;line-height:1.2}
+section.ch header small{display:block;color:var(--muted);font-size:14px;font-weight:500;font-family:var(--body)}
+.lead{background:var(--accent-soft);border-radius:12px;padding:14px 18px;margin:0 0 18px}
+h3{font-size:18px;margin:30px 0 8px;padding-left:12px;border-left:4px solid var(--accent);line-height:1.35}
+h4{font-size:16px;margin:16px 0 4px}
+ul{padding-left:1.2em;margin:8px 0} li{margin:4px 0}
+li::marker{color:var(--accent)}
+.fig{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:14px 0;min-width:0}
+.fig .ft{font-weight:700;font-size:15px;margin-bottom:6px}
+.fig .cap{font-size:13px;color:var(--muted);margin-top:8px}
+.tip{border:1px solid var(--accent);border-radius:12px;padding:10px 14px;margin:14px 0;font-size:15px}
+.tip b{color:var(--accent)}
+.concept{background:var(--surface);border:2px solid var(--accent);border-radius:14px;padding:14px 18px;margin:16px 0}
+.concept h4:first-child{margin-top:0}
+.concept h4{color:var(--accent)}
+.concept p{margin:4px 0}
+.kan{list-style:none;padding:0;display:grid;gap:8px;margin:10px 0}
+.kan li{background:var(--accent-soft);border-radius:10px;padding:10px 14px;margin:0}
+.kan li b{display:block;color:var(--accent)}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{background:var(--accent);color:var(--surface);font-weight:700;white-space:nowrap}
+td.num,th.num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+tbody tr:nth-child(even){background:color-mix(in srgb,var(--accent-soft) 45%,transparent)}
+.score td:first-child{white-space:nowrap;font-weight:500}
+@media (max-width:520px){table.score{font-size:13px} table.score th,table.score td{padding:7px 6px}}
+
+/* tenpai / pay */
+.settle{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:600px){.settle{grid-template-columns:1fr}}
+.settle>div{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.settle .t{font-weight:700;font-size:14px;margin-bottom:6px}
+.chips{display:flex;gap:6px}
+.chip{flex:1;text-align:center;border-radius:8px;padding:4px 0;font-size:12px;line-height:1.4;font-variant-numeric:tabular-nums}
+.chip.t{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.chip.n{background:var(--red-soft);color:var(--red)}
+.chip em{display:block;font-style:normal;font-weight:700;font-size:13px}
+.pay{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:600px){.pay{grid-template-columns:1fr}}
+.pay>div{border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px}
+.row{display:flex;justify-content:space-between;gap:10px;font-variant-numeric:tabular-nums;padding:2px 0}
+.plus{color:var(--accent);font-weight:700}.minus{color:var(--red)}
+
+/* calculator */
+.calc{background:var(--surface);border:2px solid var(--accent);border-radius:14px;padding:16px 18px;margin:16px 0}
+.calc .ft{font-weight:700;margin-bottom:10px}
+.ctl{display:grid;grid-template-columns:5.5em 1fr;gap:8px 10px;align-items:center;margin-bottom:12px}
+.ctl>span{font-size:14px;color:var(--muted)}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg label{position:relative}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label span{display:block;border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:14px;cursor:pointer;background:var(--bg)}
+.seg input:checked+span{background:var(--accent);border-color:var(--accent);color:var(--surface);font-weight:700}
+.seg input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.step{display:flex;align-items:center;gap:8px}
+.step button{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--bg);font-size:18px;cursor:pointer}
+.step output{min-width:2.6em;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
+.result{background:var(--accent-soft);border-radius:10px;padding:12px 14px}
+.result .tot{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:18px;border-top:1px solid var(--line);margin-top:6px;padding-top:6px}
+.result .tot span:last-child{color:var(--accent);font-size:22px;font-variant-numeric:tabular-nums}
+.result .row{font-size:14px}
+
+/* wanpai diagram */
+.wp{display:grid;gap:14px}
+.wp .st{display:grid;grid-template-columns:minmax(0,1fr);gap:4px}
+.wp .lbl{font-size:14px}
+.wp .lbl b{color:var(--accent)}
+.wall2{display:flex;align-items:flex-end;gap:3px;overflow-x:auto;padding:4px 0 2px}
+.stk{display:flex;flex-direction:column;gap:1px;--tw:17px}
+.stk .e{width:var(--tw);height:calc(var(--tw)*4/3);border:1.5px dashed var(--tile-edge);border-radius:3px}
+.wall2 .cut{width:2px;align-self:stretch;background:var(--red);margin:0 5px;flex:none}
+.wall2 .seg2{display:flex;gap:3px;padding:3px;border-radius:8px}
+.wall2 .seg2.w{background:var(--accent-soft)}
+.cnt{font-size:12px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap}
+.cnt b{color:var(--fg)}
+
+/* yaku cards */
+.ylist{display:grid;gap:10px}
+.y{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px;display:grid;grid-template-columns:7.5em 4.2em 6.5em minmax(0,1fr);gap:4px 12px;align-items:start}
+.y .nm{font-weight:700;font-size:16px}
+.y .hn{font-weight:700}
+.y .hn.ym{color:var(--blue)}
+.y .ds{font-size:15px}
+.y .hand{--tw:20px;gap:4px 7px;margin:6px 0 0}
+.mz{color:var(--red);font-weight:700;font-size:13px;white-space:nowrap}
+.mm{color:var(--muted);font-size:13px;white-space:nowrap}
+.y .grpname{display:none}
+@media (max-width:640px){
+  .y{grid-template-columns:auto auto 1fr;padding:12px 14px}
+  .y .ds{grid-column:1/-1}
+  .y .mz,.y .mm{justify-self:start}
+  .y .hand{--tw:18px;gap:4px 5px}
+}
+.ysec{font-size:17px;margin:26px 0 10px;font-weight:700;display:flex;gap:8px;align-items:baseline}
+.ysec small{color:var(--muted);font-weight:500;font-size:13px}
+.empty{color:var(--muted);text-align:center;padding:24px}
+
+/* terms */
+.search{display:flex;gap:8px;margin-bottom:10px}
+.search input{flex:1;min-width:0;font:inherit;padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+.tlist{display:grid;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.trow{display:grid;grid-template-columns:8.5em 7em minmax(0,1fr);gap:4px 12px;padding:10px 16px;border-bottom:1px solid var(--line)}
+.trow:last-child{border-bottom:0}
+.trow .w{font-weight:700}
+.trow .hz{font-family:var(--tilefont);color:var(--muted)}
+.tcat{background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:14px;padding:6px 16px}
+@media (max-width:560px){.trow{grid-template-columns:auto 1fr}.trow .m{grid-column:1/-1}.trow .hz{font-size:14px}}
+
+/* setup */
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps li{counter-increment:s;position:relative;padding-left:36px;margin:8px 0}
+.steps li::before{content:counter(s);position:absolute;left:0;top:2px;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:13px;display:grid;place-items:center}
+.seat{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;max-width:360px;margin:8px auto;text-align:center;font-size:14px}
+.seat div{padding:8px 4px;border-radius:10px;line-height:1.4}
+.seat .p{border:1px solid var(--line);background:var(--bg)}
+.seat .p b{display:block;font-size:16px}
+.seat .p span{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums;font-size:13px}
+.seat .c{background:var(--accent-soft);color:var(--accent);font-weight:700;display:grid;place-items:center;font-size:13px}
+.seat .oya{border:2px solid var(--accent)}
+.wall{display:flex;align-items:flex-end;gap:2px;flex-wrap:nowrap;--tw:18px}
+.wall .cut{width:2px;align-self:stretch;background:var(--red);margin:0 4px;flex:none}
+.wall .lab{display:flex;flex-direction:column;align-items:center;gap:3px}
+.wall .lab small{font-size:11px;color:var(--muted);white-space:nowrap}
+footer{color:var(--muted);font-size:13px;border-top:1px solid var(--line);margin-top:56px;padding-top:16px}
+
+.fab{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:6;border:0;border-radius:99px;background:var(--accent);color:var(--surface);padding:10px 16px;font-weight:700;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.2);cursor:pointer}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+
+<header class="top">
+  <div class="wrap">
+    <div class="eyebrow">Riichi Mahjong · House Rules</div>
+    <h1>리치마작 룰북</h1>
+    <p class="sub">처음 치는 사람도 바로 시작할 수 있는 캐주얼 룰</p>
+    <dl class="facts">
+      <div><dt>게임 길이</dt><dd>동풍전</dd></div>
+      <div><dt>시작 점수</dt><dd>25,000점</dd></div>
+      <div><dt>점수 계산</dt><dd>간이 점수표</dd></div>
+      <div><dt>내기</dt><dd>없음</dd></div>
+    </dl>
+  </div>
+  <nav class="tabs" aria-label="화면 선택">
+    <div class="wrap">
+      <a href="#summary" data-view="summary">한 장 요약</a>
+      <a href="#rulebook" data-view="rulebook">룰북</a>
+      <a href="#yaku" data-view="yaku"><span class="k">부록 A</span>역 목록</a>
+      <a href="#setup" data-view="setup"><span class="k">부록 B</span>시작 방법</a>
+      <a href="#terms" data-view="terms"><span class="k">부록 C</span>용어</a>
+      <a href="score.html">점수판 ↗</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+<!-- ================= 한 장 요약 ================= -->
+<div class="wrap view" id="v-summary">
+  <div class="cards">
+    <div class="card">
+      <h2><span class="n">1</span>손패의 기본 <small>몸통 4개 + 머리 1개</small></h2>
+      <p><b>몸통</b>은 3장 묶음입니다. 같은 문양의 <span class="hl">연속된 숫자</span>(슌츠), 같은 문양의 <span class="hl">같은 숫자</span>(커츠), 또는 <span class="hl">같은 자패</span> 3장(커츠). <b>머리</b>는 같은 패 2장입니다.</p>
+      <div class="hand" data-hand="234m 567p 345s 777z 88s" data-labels="슌츠|슌츠|슌츠|커츠 · 중=역패|머리"></div>
+      <p class="note">모양이 완성돼도 <b>역이 1개 이상</b> 있어야 화료할 수 있습니다. 위 손패는 중 커츠(역패)가 있어서 화료 가능.</p>
+    </div>
+    <div class="card">
+      <h2><span class="n">2</span>내 차례 <small>1장 가져오고, 1장 버리기</small></h2>
+      <p>패산에서 1장 가져오고(쯔모) 1장 버립니다. 가져온 패로 손패가 완성되고 역이 있으면 <span class="hl">“쯔모!”</span>를 외치고 화료(승리)합니다.</p>
+    </div>
+    <div class="card">
+      <h2><span class="n">3</span>남이 버린 패 가져오기 <small>퐁 · 치 · 깡 · 론</small></h2>
+      <div class="calls">
+        <div class="call"><b>퐁</b>누구든 버린 패로 커츠(같은 패 3장)가 완성되면 가져오기</div>
+        <div class="call"><b>치</b>왼쪽 사람이 버린 패로 슌츠(연속 숫자 3장)가 완성되면 가져오기</div>
+        <div class="call"><b>깡</b>누구든 버린 패로 같은 패 4장이 완성되면 가져오기</div>
+        <div class="call ron"><b>론</b>남이 버린 패로 내 손패가 완성되면 론으로 화료</div>
+      </div>
+      <p class="note" style="margin-top:10px">퐁·치·깡으로 가져오는 것을 <b>운다</b>고 합니다. 울면 리치를 할 수 없고, 사라지는 역도 있습니다. 동시에 외치면 <b>론 → 퐁·깡 → 치</b> 순서로 우선합니다.</p>
+    </div>
+    <div class="two">
+      <div class="card">
+        <h2><span class="n">4</span>리치</h2>
+        <p>울지 않은 상태(멘젠)에서 텐파이가 되면, 패를 버리면서 <span class="hl">“리치!”</span>를 선언할 수 있습니다. <b>1,000점</b>을 내고 <b>1판</b>을 얻습니다.</p>
+        <p class="note">조건: 점수 1,000점 이상 · 패산에 4장 이상 남았을 때. 리치 후에는 손패를 바꿀 수 없습니다.</p>
+      </div>
+      <div class="card">
+        <h2><span class="n">5</span>후리텐</h2>
+        <p class="warn">내가 버린 패 중에 지금 기다리는 패가 하나라도 있으면, 어떤 대기패로도 론할 수 없습니다.</p>
+        <p>쯔모 화료는 가능합니다.</p>
+      </div>
+    </div>
+    <div class="card">
+      <h2><span class="n">6</span>처음엔 이 역 3개만 <small>역이 없으면 화료 불가</small></h2>
+      <div class="calls">
+        <div class="call"><b>리치</b>멘젠 텐파이에서 선언 · 1판</div>
+        <div class="call"><b>탕야오</b>2~8 숫자패로만 구성 · 1판 · 울어도 됨</div>
+        <div class="call"><b>역패</b>백·발·중 또는 동(장풍)·자풍 커츠 · 1판 · 울어도 됨</div>
+        <div class="call"><b>도라</b>역이 아니라 보너스. 표시패의 <b>다음</b> 패가 장당 +1판</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2><span class="n">7</span>점수 <small>판수를 더해 표에서 찾기 · 30부 고정</small></h2>
+      <div class="scroll">
+      <table class="score">
+        <thead><tr><th>판수</th><th class="num">자 론</th><th class="num">자 쯔모</th><th class="num">친 론</th><th class="num">친 쯔모</th></tr></thead>
+        <tbody>
+          <tr><td>1판</td><td class="num">1,000</td><td class="num">300 / 500</td><td class="num">1,500</td><td class="num">500 all</td></tr>
+          <tr><td>2판</td><td class="num">2,000</td><td class="num">500 / 1,000</td><td class="num">2,900</td><td class="num">1,000 all</td></tr>
+          <tr><td>3판</td><td class="num">3,900</td><td class="num">1,000 / 2,000</td><td class="num">5,800</td><td class="num">2,000 all</td></tr>
+          <tr><td>4~5판 만관</td><td class="num">8,000</td><td class="num">2,000 / 4,000</td><td class="num">12,000</td><td class="num">4,000 all</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="note"><b>친</b> = 이번 국의 딜러(동 자리), <b>자</b> = 나머지 3명. 자 쯔모는 “자 지불 / 친 지불”. 6판 이상과 역만은 룰북 5장을 보세요.</p>
+    </div>
+    <div class="flow">
+      <span class="s">1장 가져오기</span><i>→</i><span class="s">1장 버리기</span><i>→</i><span class="s">남이 버린 패에 퐁·치·깡·론</span><i>→</i><span class="s">다음 사람</span>
+    </div>
+    <p class="note" style="text-align:center;margin:4px 0 0">인쇄용 <a href="pdf/summary-a5.pdf">한 장 요약 PDF (A5)</a> · 게임 중 점수 기록은 <a href="score.html">점수판</a></p>
+  </div>
+</div>
+
+<!-- ================= 룰북 ================= -->
+<div class="wrap view" id="v-rulebook" hidden>
+  <nav class="chipbar" aria-label="장 바로가기">
+    <a href="#ch1"><span>1</span>준비</a><a href="#ch2"><span>2</span>목표</a><a href="#ch3"><span>3</span>게임 흐름</a><a href="#ch4"><span>4</span>진행하기</a><a href="#ch5"><span>5</span>역과 점수</a><a href="#ch6"><span>6</span>기타 룰</a>
+  </nav>
+
+  <section class="ch" id="ch1">
+    <header><div class="badge">1</div><h2>준비: 패와 도구<small>136장 · 34종 · 같은 패 4장씩</small></h2></header>
+    <p class="lead">마작패는 총 136장(같은 패 4장씩 34종)이고, 숫자패 3종류와 글자패(자패)로 나뉩니다.</p>
+    <div class="fig">
+      <div class="ft">패 34종 한눈에 보기</div>
+      <div class="scroll">
+        <p style="margin:4px 0 0"><b>만수</b> <span class="note">萬 글자</span></p>
+        <div class="hand" data-hand="123456789m"></div>
+        <p style="margin:4px 0 0"><b>통수</b> <span class="note">동그라미</span></p>
+        <div class="hand" data-hand="123456789p"></div>
+        <p style="margin:4px 0 0"><b>삭수</b> <span class="note">대나무 · 1삭은 새</span></p>
+        <div class="hand" data-hand="123456789s"></div>
+        <p style="margin:4px 0 0"><b>자패</b></p>
+        <div class="hand" data-hand="1234z 567z" data-labels="풍패 (동·남·서·북)|삼원패 (백·발·중)"></div>
+        <p style="margin:4px 0 0"><b>아카도라</b> <span class="note">빨간 5</span></p>
+        <div class="hand" data-hand="0m 0p 0s"></div>
+      </div>
+      <div class="cap">아카도라는 만·통·삭의 5 중 1장씩을 빨간 5로 바꾼 것입니다(총 3장). 패 수는 136장 그대로입니다.</div>
+    </div>
+    <ul>
+      <li><b>요구패</b> = 노두패(숫자 1·9) + 자패. 역 이름에 자주 나옵니다.</li>
+    </ul>
+  </section>
+
+  <section class="ch" id="ch2">
+    <header><div class="badge">2</div><h2>게임의 목표<small>몸통 4개 + 머리 1개</small></h2></header>
+    <p class="lead">화료하려면 <span class="hl">14장을 ‘4몸통 + 1머리’로 맞추고, 역을 1개 이상</span> 갖고 있어야 합니다. 역이 없으면 모양이 완성돼도 화료할 수 없습니다.</p>
+    <p>역은 5장 ‘역과 점수 계산’에서 설명합니다. 지금은 모양만 익히면 됩니다.</p>
+    <div class="fig">
+      <div class="ft">화료 손패 예시 · 중 커츠가 역패(1판)라서 화료할 수 있습니다</div>
+      <div class="hand big" data-hand="234m 567p 345s 777z 88s" data-labels="슌츠 · 만수 2-3-4|슌츠 · 통수 5-6-7|슌츠 · 삭수 3-4-5|커츠 · 중 3장|머리 · 같은 패 2장"></div>
+    </div>
+    <ul>
+      <li><b>쯔모</b>: 내가 뽑은 패로 완성 · <b>론</b>: 남이 버린 패로 완성</li>
+      <li>치또이츠(또이츠 7개)와 국사무쌍은 예외 모양으로 인정합니다.</li>
+    </ul>
+  </section>
+
+  <section class="ch" id="ch3">
+    <header><div class="badge">3</div><h2>게임 흐름<small>시작부터 끝까지</small></h2></header>
+    <p class="lead">한 판(동풍전)은 최소 4국(동1국~동4국)이고, 매 국마다 누군가 화료하거나 패산이 떨어질 때까지 ‘한 장 가져오고 한 장 버리기’를 반복합니다.</p>
+
+    <div class="concept">
+      <h4>친과 자</h4>
+      <p><b>친(親)</b>은 이번 국의 딜러이고, 나머지 3명은 <b>자(子)</b>입니다. 첫 친은 자리 정하기에서 동을 뽑은 사람입니다.</p>
+      <ul>
+        <li><b>친이 넘어갈 때</b>: 자가 화료하거나, 유국 때 친이 노텐이면 오른쪽 사람이 다음 친이 되고 국 번호가 하나 올라갑니다(동1국 → 동2국).</li>
+        <li><b>친이 계속할 때(연짱)</b>: 친이 화료하거나, 유국 때 친이 텐파이면 같은 사람이 한 번 더 친을 합니다. 국 번호는 그대로이고 본장만 1 늘어납니다(동1국 1본장).</li>
+      </ul>
+      <p>그래서 동풍전은 4명이 최소 한 번씩 친을 맡고, 연짱이 나오면 그만큼 길어집니다.</p>
+      <p>친은 화료하면 자보다 <b>1.5배</b>를 받습니다. 대신 다른 사람이 쯔모하면 자보다 <b>2배</b>를 냅니다. 친일 때가 기회이자 위기입니다.</p>
+      <h4>장풍과 자풍</h4>
+      <p><b>장풍(場風)</b>은 판 전체의 바람입니다. 동풍전은 처음부터 끝까지 <b>동</b>입니다. <b>자풍(自風)</b>은 내 자리의 바람입니다. 친이 동, 친의 오른쪽이 남, 맞은편이 서, 왼쪽이 북입니다. 친이 넘어가면 모두의 자풍도 한 칸씩 바뀝니다.</p>
+      <p class="note">장풍 패나 내 자풍 패를 커츠로 모으면 역패 1판입니다. 동풍전의 친은 장풍과 자풍이 둘 다 동이라서, 동 커츠가 2판이 됩니다.</p>
+      <div class="seat" aria-label="친 기준 자리 배치">
+        <div></div><div class="p"><b>서</b><span>친의 맞은편</span></div><div></div>
+        <div class="p"><b>북</b><span>친의 왼쪽</span></div><div class="c">반시계<br>방향 ↺</div><div class="p"><b>남</b><span>친의 오른쪽</span></div>
+        <div></div><div class="p oya"><b>동 · 친</b><span>첫 차례</span></div><div></div>
+      </div>
+    </div>
+
+    <div class="fig">
+      <div class="ft">한 국의 순서</div>
+      <ol class="steps">
+        <li><b>자리 정하기</b> · 동남서북 패를 뽑아 동이 첫 친</li>
+        <li><b>패산 쌓기</b> · 17장 × 2층을 각자 앞에</li>
+        <li><b>배패</b> · 13장씩 받고, 왕패 14장 남김</li>
+        <li><b>도라 표시</b> · 왕패 3번째 스택 윗장을 뒤집기</li>
+        <li><b>쯔모 → 버림</b> · 친부터 반시계 방향(오른쪽 사람 순서)으로</li>
+        <li><b>국 종료</b> · 화료 또는 유국 → 다음 국</li>
+      </ol>
+      <div class="cap">자세한 준비 방법은 <a href="#setup">부록 B ‘시작 방법’</a>을 보세요.</div>
+    </div>
+
+    <h3>화료</h3>
+    <p>누군가 화료하면 그 국이 끝나고 점수를 주고받습니다. 친이 화료하면 같은 사람이 친을 한 번 더 하고(연짱), 자가 화료하면 친이 오른쪽 사람에게 넘어갑니다.</p>
+
+    <h3>텐파이</h3>
+    <p>1장만 더 오면 완성되는 상태를 <span class="hl">텐파이</span>, 아닌 상태를 <span class="hl">노텐</span>이라고 합니다. 유국이 되면 텐파이인 사람은 손패를 펼쳐 보여 줍니다.</p>
+
+    <h3>유국</h3>
+    <p>패산이 다 떨어질 때까지 아무도 화료하지 못하면 유국이고, <span class="hl">노텐인 사람이 텐파이인 사람에게 총 3,000점</span>을 냅니다.</p>
+    <div class="fig">
+      <div class="ft">텐파이 정산 3가지 경우</div>
+      <div class="settle">
+        <div><div class="t">1명 텐파이</div><div class="chips"><span class="chip t">텐<em>+3,000</em></span><span class="chip n">노텐<em>−1,000</em></span><span class="chip n">노텐<em>−1,000</em></span><span class="chip n">노텐<em>−1,000</em></span></div></div>
+        <div><div class="t">2명 텐파이</div><div class="chips"><span class="chip t">텐<em>+1,500</em></span><span class="chip t">텐<em>+1,500</em></span><span class="chip n">노텐<em>−1,500</em></span><span class="chip n">노텐<em>−1,500</em></span></div></div>
+        <div><div class="t">3명 텐파이</div><div class="chips"><span class="chip t">텐<em>+1,000</em></span><span class="chip t">텐<em>+1,000</em></span><span class="chip t">텐<em>+1,000</em></span><span class="chip n">노텐<em>−3,000</em></span></div></div>
+      </div>
+      <div class="cap">0명 또는 4명 텐파이면 주고받지 않습니다.</div>
+    </div>
+
+    <h3>연짱과 본장</h3>
+    <ul>
+      <li>친이 화료하면 같은 사람이 다시 친을 합니다(연짱).</li>
+      <li>유국 시 친이 텐파이면 연짱하고, <span class="hl">노텐이면 다음 사람에게 친이 넘어갑니다</span>.</li>
+      <li>연짱하거나 유국되면 <span class="hl">본장</span>이 1 늘어납니다. 100점봉을 친 옆에 놓아 표시합니다. 본장이 쌓이면 다음 화료자가 보너스를 받습니다(5장 참고).</li>
+      <li>자가 화료하면 본장은 0으로 돌아가고 친이 오른쪽으로 넘어갑니다.</li>
+    </ul>
+
+    <h3>게임이 끝날 때</h3>
+    <p>동4국이 끝나면 판이 끝나고, <span class="hl">남은 점수 순서대로 1~4위</span>를 정합니다. 남은 공탁 리치봉은 1위가 가져갑니다.</p>
+    <ul><li>동4국에서 친이 1위인데 화료하거나 유국 때 텐파이라면, 원할 경우 연짱하지 않고 그대로 끝낼 수 있습니다.</li></ul>
+
+    <h3>들통</h3>
+    <p>누군가 점수가 <span class="hl">0점 미만</span>이 되면 그 즉시 게임이 끝납니다. 그때까지의 점수로 순위를 정합니다.</p>
+  </section>
+
+  <section class="ch" id="ch4">
+    <header><div class="badge">4</div><h2>게임 진행하기<small>쯔모 · 리치 · 치퐁깡 · 론</small></h2></header>
+    <p class="lead">할 수 있는 일은 네 가지뿐입니다. 내 차례에는 <span class="hl">쯔모하고 버리기</span>(텐파이면 리치 선언), 남이 패를 버렸을 때는 <span class="hl">치·퐁·깡</span> 또는 <span class="hl">론</span>.</p>
+
+    <h3>쯔모하고 버리기</h3>
+    <ul>
+      <li>패산에서 1장 가져와(쯔모) 손패 14장을 만든 뒤 1장을 버립니다.</li>
+      <li>가져온 패로 손패가 완성되면 “쯔모!”를 외치고 화료합니다.</li>
+      <li>버리기 직전에 텐파이라면 리치를 선언할 수 있습니다.</li>
+    </ul>
+
+    <h3>리치 선언</h3>
+    <p>리치는 멘젠 상태일 때 ‘텐파이입니다’라고 선언하고 1판을 얻는 역으로, <span class="hl">역이 없는 손패도 리치만 하면 화료할 수 있어서</span> 초보에게 가장 중요한 역입니다.</p>
+    <div class="fig">
+      <div class="ft">리치 = 텐파이 선언 + 1,000점 공탁. 대신 손패는 더 못 바꿉니다</div>
+      <ol class="steps">
+        <li><b>멘젠 텐파이</b> · 1장만 오면 완성되는 상태
+          <div class="hand" data-hand="234p 456s 789m 555z 3!s" data-labels="|||백 커츠|3삭 단기 대기"></div></li>
+        <li><b>“리치!” 선언</b> · 이번에 버리는 패를 가로로 눕혀 놓습니다</li>
+        <li><b>1,000점 공탁</b> · 1,000점봉을 테이블 가운데에. 다음 화료자가 가져갑니다</li>
+        <li><b>쯔모기리</b> · 화료패가 아니면 가져온 패를 그대로 버립니다</li>
+      </ol>
+      <div class="cap">조건: 멘젠(안 울었음) · 점수 1,000점 이상 · 남은 패 4장 이상<br>보너스: 일발 +1판 · 뒷도라 확인 · 첫 차례 리치는 더블리치 2판</div>
+    </div>
+    <p>리치를 걸면 도망칠 수 없으므로, 다른 사람의 리치가 나오면 그 사람이 이미 버린 패(안전패)를 먼저 버리는 것이 기본 수비입니다.</p>
+
+    <h3>치·퐁·깡 (울기)</h3>
+    <p>다른 사람의 버림패를 가져와 몸통을 만드는 것을 ‘운다’고 합니다. 빨라지지만 <span class="hl">울면 리치를 못 하고 일부 역이 사라져서</span>, 역 없이 울면 화료를 못 하는 일이 생깁니다.</p>
+    <div class="fig">
+      <div class="ft">울어서 가져온 패는 준 사람 쪽으로 눕혀 둡니다</div>
+      <div class="hand" style="gap:14px 22px" data-hand="3'45m 77'7p 777'7z 8b888bs" data-labels="치 · 왼쪽 사람이 버린 3만|퐁 · 맞은편이 버린 7통|명깡 · 오른쪽이 버린 중|암깡 · 양 끝 2장은 뒤집어 둠"></div>
+      <div class="cap">치는 왼쪽 사람 패만, 퐁·깡은 누구의 패든 가능. 동시에 외치면 론 → 퐁·깡 → 치 순서로 우선합니다.</div>
+    </div>
+    <p><b>깡은 3종류</b>입니다.</p>
+    <ul class="kan">
+      <li><b>대명깡</b>내 손에 같은 패 3장이 있을 때, 남이 버린 4번째 패를 가져와 깡을 만듭니다.</li>
+      <li><b>암깡</b>내 손패에 같은 패 4장이 모이면 내 차례에 선언합니다. 운 것으로 치지 않아서 멘젠이 유지됩니다.</li>
+      <li><b>가깡</b>이미 퐁한 패의 4번째 패를 가져왔거나 손에 갖고 있으면, 내 차례에 퐁에 붙여 깡으로 바꿉니다.</li>
+    </ul>
+    <ul>
+      <li>어떤 깡이든 선언한 뒤에는 <span class="hl">왕패에서 보충패 1장</span>을 가져오고 <span class="hl">새 도라 표시패를 1장 더 뒤집은 다음</span>, 1장을 버립니다(깡도라). 그림은 5장 ‘도라’를 보세요.</li>
+    </ul>
+    <ul>
+      <li>가깡으로 붙이는 패가 다른 사람의 대기패라면 그 사람이 론할 수 있습니다(창깡).</li>
+      <li><span class="hl">멘젠</span>(안 운 상태)이어야 리치·멘젠쯔모·핑후가 됩니다. 초보는 역패 퐁이나 탕야오로 울어 보세요.</li>
+    </ul>
+    <div class="tip"><b>선언 요령</b> · 크게 외치고, 다음 사람이 쯔모하기 전에 선언합니다.</div>
+
+    <h3>론</h3>
+    <ul>
+      <li>남이 버린 패로 손패가 완성되면 “론!”을 외칩니다. 버린 사람(방총)이 점수를 혼자 냅니다.</li>
+      <li>론은 퐁·깡·치보다 우선합니다. 두 명이 동시에 외치면 버린 사람 다음 순서인 사람만 화료합니다(머리치기).</li>
+      <li>내 버림패에 대기패가 있으면 론할 수 없습니다. 6장 ‘기타 룰’의 후리텐을 보세요.</li>
+    </ul>
+  </section>
+
+  <section class="ch" id="ch5">
+    <header><div class="badge">5</div><h2>역과 점수 계산<small>판수를 더하고 표에서 찾기</small></h2></header>
+    <p class="lead">화료하려면 반드시 <span class="hl">역이 1개 이상</span> 있어야 합니다. <span class="hl">도라는 역이 아니라 점수를 올려주는 보너스</span>입니다. 화료 조건을 충족했다면 역과 도라의 판수를 합산해 점수를 계산합니다.</p>
+    <p>역의 종류와 예시 손패는 <a href="#yaku">부록 A ‘역 목록’</a>에 모아 두었습니다. 처음에는 리치·탕야오·역패만 알아도 충분합니다.</p>
+    <ul><li>역이 여러 개면 판수를 더합니다. 예: 리치 + 멘젠쯔모 + 탕야오 + 도라 1 = 4판(만관).</li></ul>
+
+    <h3>도라</h3>
+    <p>도라는 보유한 장수만큼 판이 더해지는 보너스 패입니다. <span class="hl">표시패에 보이는 패가 아니라 그 ‘다음’ 패가 도라</span>라는 점만 기억하면 됩니다.</p>
+    <div class="fig">
+      <div class="ft">표시패 → 도라</div>
+      <div class="hand big" style="gap:10px 28px" data-hand="3p 4!p 9s 1!s 4z 1!z 7z 5!z" data-labels="표시패|도라 · 숫자는 +1|표시패|도라 · 9 다음은 1|표시패|도라 · 북 다음은 동|표시패|도라 · 중 다음은 백"></div>
+      <div class="cap">바람: 동 → 남 → 서 → 북 → 동 · 삼원패: 백 → 발 → 중 → 백</div>
+    </div>
+    <ul>
+      <li>아카도라·깡도라·뒷도라(리치 화료 때만)도 장당 1판입니다.</li>
+      <li>도라만 있고 역이 없으면 화료할 수 없습니다.</li>
+      <li><span class="hl">역만에는 도라를 더하지 않습니다.</span> 도라가 몇 장 있어도 역만 점수 그대로입니다.</li>
+    </ul>
+
+    <h4>깡도라와 왕패</h4>
+    <ul>
+      <li><span class="hl">깡을 할 때마다</span> 왕패에서 보충패 1장을 가져오고, 도라 표시패를 1장 더 뒤집어 도라가 늘어납니다(깡도라).</li>
+      <li>왕패는 평소에 쯔모하지 않는 패입니다. 도라 표시패, 뒷도라, 깡 보충패로만 씁니다.</li>
+      <li>왕패는 항상 14장을 유지합니다. 보충패를 가져갈 때마다 <span class="hl">패산 끝(왕패 바로 앞)의 패 1장을 왕패 쪽으로 옮깁니다</span>.</li>
+    </ul>
+    <div class="fig">
+      <div class="ft">깡 할 때 왕패 14장 유지하기</div>
+      <div class="wp">
+        <div class="st"><div class="lbl"><b>①</b> 평소: 왕패는 7스택 = 14장</div>
+          <div class="wall2" data-wall="xx xx xx xx | xx xx dx xx xx xx rx"></div>
+          <div class="cnt"><span>패산 끝 ← 여기까지 쯔모</span><span>왕패 <b>14장</b></span></div></div>
+        <div class="st"><div class="lbl"><b>②</b> 깡 선언 → 왕패 맨 끝에서 보충패 1장을 가져오고, 도라 표시패 옆 1장을 더 뒤집기</div>
+          <div class="wall2" data-wall="xx xx xx hx | xx xx dx kx xx xx .x"></div>
+          <div class="cnt"><span>왕패 <b>13장</b> (1장 부족)</span></div></div>
+        <div class="st"><div class="lbl"><b>③</b> 패산 끝의 1장(파란 테두리)을 왕패 빈자리로 옮기기</div>
+          <div class="wall2" data-wall="xx xx xx .x | xx xx dx kx xx xx Hx"></div>
+          <div class="cnt"><span>패산은 1장 줄어듦</span><span>왕패 다시 <b>14장</b></span></div></div>
+      </div>
+      <div class="cap">빨간 선 오른쪽(연한 파랑)이 왕패입니다. 표시패 = 첫 도라 표시패, 그 옆 = 깡도라 표시패.</div>
+    </div>
+
+    <h3>간이 점수표</h3>
+    <p>모든 화료를 30부로 간주하고, <span class="hl">4판부터는 만관</span>으로 처리합니다.</p>
+    <div class="scroll">
+    <table class="score">
+      <thead><tr><th>판수</th><th class="num">자 론</th><th class="num">자 쯔모<br>(자 / 친 지불)</th><th class="num">친 론</th><th class="num">친 쯔모<br>(각자)</th></tr></thead>
+      <tbody>
+        <tr><td>1판</td><td class="num">1,000</td><td class="num">300 / 500</td><td class="num">1,500</td><td class="num">500</td></tr>
+        <tr><td>2판</td><td class="num">2,000</td><td class="num">500 / 1,000</td><td class="num">2,900</td><td class="num">1,000</td></tr>
+        <tr><td>3판</td><td class="num">3,900</td><td class="num">1,000 / 2,000</td><td class="num">5,800</td><td class="num">2,000</td></tr>
+        <tr><td>4~5판 (만관)</td><td class="num">8,000</td><td class="num">2,000 / 4,000</td><td class="num">12,000</td><td class="num">4,000</td></tr>
+        <tr><td>6~7판 (하네만)</td><td class="num">12,000</td><td class="num">3,000 / 6,000</td><td class="num">18,000</td><td class="num">6,000</td></tr>
+        <tr><td>8~10판 (배만)</td><td class="num">16,000</td><td class="num">4,000 / 8,000</td><td class="num">24,000</td><td class="num">8,000</td></tr>
+        <tr><td>11~12판 (삼배만)</td><td class="num">24,000</td><td class="num">6,000 / 12,000</td><td class="num">36,000</td><td class="num">12,000</td></tr>
+        <tr><td>역만 · 13판 이상</td><td class="num">32,000</td><td class="num">8,000 / 16,000</td><td class="num">48,000</td><td class="num">16,000</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="kz"><b>헤아림 역만</b>: 역만이 아니어도 역과 도라를 합쳐 <span class="hl">13판 이상</span>이면 역만 점수를 받습니다.</p>
+
+    <h3>보너스 점수: 본장과 공탁</h3>
+    <p>표의 점수에 아래 두 가지를 더 받을 수 있습니다.</p>
+    <div class="concept">
+      <h4>본장: 친 옆의 100점봉</h4>
+      <p>연짱이나 유국이 나올 때마다 친 옆에 100점봉이 하나씩 쌓입니다. 화료하면 <b>100점봉 1개당 300점</b>을 더 받습니다.</p>
+      <ul>
+        <li>론이면 버린 사람이 300점씩 더 냅니다.</li>
+        <li>쯔모면 나머지 3명이 100점씩 나눠 냅니다. 받는 합계는 똑같이 300점입니다.</li>
+      </ul>
+      <p class="note">예: 100점봉이 2개 있을 때 자가 2판으로 론 → 2,000 + 600 = <b>2,600점</b></p>
+      <h4>공탁: 테이블 가운데의 1,000점봉</h4>
+      <p>리치할 때 낸 1,000점봉은 가운데에 남아 있다가, <b>다음에 화료한 사람이 전부</b> 가져갑니다. 유국이 나면 그대로 남아서 다음 국으로 넘어갑니다.</p>
+      <p class="note">예: 가운데에 1,000점봉이 2개 있으면 화료한 사람은 +2,000점</p>
+    </div>
+
+    <div class="calc noprint" id="calc">
+      <div class="ft">점수 계산해 보기</div>
+      <div class="ctl"><span>판수</span>
+        <div class="seg" role="radiogroup" aria-label="판수">
+          <label><input type="radio" name="han" id="han1" value="1"><span>1판</span></label>
+          <label><input type="radio" name="han" id="han2" value="2"><span>2판</span></label>
+          <label><input type="radio" name="han" id="han3" value="3" checked><span>3판</span></label>
+          <label><input type="radio" name="han" id="han4" value="4"><span>만관</span></label>
+          <label><input type="radio" name="han" id="han6" value="6"><span>하네만</span></label>
+          <label><input type="radio" name="han" id="han8" value="8"><span>배만</span></label>
+          <label><input type="radio" name="han" id="han11" value="11"><span>삼배만</span></label>
+          <label><input type="radio" name="han" id="han13" value="13"><span>역만</span></label>
+        </div></div>
+      <div class="ctl"><span>화료한 사람</span>
+        <div class="seg" role="radiogroup" aria-label="화료한 사람">
+          <label><input type="radio" name="who" id="who-ko" value="ko" checked><span>자</span></label>
+          <label><input type="radio" name="who" id="who-oya" value="oya"><span>친</span></label>
+        </div></div>
+      <div class="ctl"><span>방법</span>
+        <div class="seg" role="radiogroup" aria-label="화료 방법">
+          <label><input type="radio" name="how" id="how-ron" value="ron" checked><span>론</span></label>
+          <label><input type="radio" name="how" id="how-tsumo" value="tsumo"><span>쯔모</span></label>
+        </div></div>
+      <div class="ctl"><span>100점봉<br><small>(본장)</small></span>
+        <div class="step"><button type="button" data-step="honba" data-d="-1" aria-label="본장 줄이기">−</button><output id="honba-v">0개</output><button type="button" data-step="honba" data-d="1" aria-label="본장 늘리기">+</button></div></div>
+      <div class="ctl"><span>1,000점봉<br><small>(공탁)</small></span>
+        <div class="step"><button type="button" data-step="kyo" data-d="-1" aria-label="공탁 줄이기">−</button><output id="kyo-v">0개</output><button type="button" data-step="kyo" data-d="1" aria-label="공탁 늘리기">+</button></div></div>
+      <div class="result" id="calc-out" aria-live="polite"></div>
+    </div>
+
+    <div class="fig">
+      <div class="ft">론은 버린 사람 혼자, 쯔모는 나머지 3명이 나눠 냅니다</div>
+      <div class="pay">
+        <div><b>론 · 자 3판</b>
+          <div class="row"><span>화료한 사람</span><span class="plus">+3,900</span></div>
+          <div class="row"><span>버린 사람(방총)</span><span class="minus">−3,900</span></div>
+          <div class="row"><span>나머지 2명</span><span>0</span></div></div>
+        <div><b>쯔모 · 자 3판</b>
+          <div class="row"><span>화료한 사람</span><span class="plus">+4,000</span></div>
+          <div class="row"><span>친</span><span class="minus">−2,000</span></div>
+          <div class="row"><span>자 2명</span><span class="minus">각 −1,000</span></div></div>
+      </div>
+    </div>
+    <p class="note">간이표는 정식 점수와 조금 다를 수 있지만(예: 정식으로는 4판 30부 = 7,700점) 모두 같은 표를 쓰므로 공평합니다. 정식 부수 계산은 모두가 익숙해진 뒤 도입합니다.</p>
+  </section>
+
+  <section class="ch" id="ch6">
+    <header><div class="badge">6</div><h2>기타 룰<small>헷갈리기 쉬운 규칙</small></h2></header>
+    <p class="lead">처음엔 몰라도 괜찮고, 상황이 생기면 여기서 확인하세요.</p>
+
+    <h3>후리텐 (초보가 가장 많이 틀리는 룰)</h3>
+    <div class="fig">
+      <div class="ft">버림패에 내 대기패가 있으면 론은 못 하고, 쯔모로만 화료할 수 있습니다</div>
+      <p style="margin:4px 0 0"><b>내 손패</b> <span class="note">3·6만 대기</span></p>
+      <div class="hand" data-hand="45m 234p 456s 777z 88p"></div>
+      <p style="margin:8px 0 0"><b>내 버림패</b> <span class="note">6만을 이미 버림</span></p>
+      <div class="hand" data-hand="4z 1s 9p 6!m 3z 9s"></div>
+      <div class="cap"><span class="warn">남이 버린 3·6만 → 론 불가</span> · <span class="hl">내가 뽑은 3·6만 → 쯔모 가능</span></div>
+    </div>
+    <ul>
+      <li><span class="hl">버림패 후리텐</span>: 내가 버린 패에 현재 기다리는 패가 하나라도 있으면, 다른 대기패로도 론할 수 없습니다.</li>
+      <li><span class="hl">동순 후리텐</span>: 론할 수 있는 패를 그냥 넘기면 다음 자신의 쯔모 차례까지 론할 수 없습니다.</li>
+      <li><span class="hl">리치 후 후리텐</span>: 리치한 상태에서 론을 넘기면 그 국이 끝날 때까지 론할 수 없습니다.</li>
+      <li>어느 경우든 <span class="hl">쯔모 화료는 가능</span>합니다.</li>
+    </ul>
+
+    <h3>도중 유국</h3>
+    <p>아래 4가지 경우에는 국을 그대로 끝내고 다시 시작합니다(<span class="hl">본장 +1, 친 유지</span>). 점수는 주고받지 않고, 이미 낸 리치봉은 공탁으로 남습니다.</p>
+    <ul>
+      <li><span class="hl">구종구패</span>: 첫 차례에, 아무도 울기 전 손패의 요구패가 9종 이상이면 원하는 경우 선언하고 유국.</li>
+      <li><span class="hl">사풍연타</span>: 첫 바퀴에 아무도 울지 않고 4명이 모두 같은 바람패를 버리면 유국.</li>
+      <li><span class="hl">사깡산라</span>: 2명 이상이 합쳐서 깡을 4번 하면 유국. 한 사람이 4번 모두 했다면 계속 진행합니다(스깡쯔 역만 기회).</li>
+      <li><span class="hl">사가리치</span>: 4명이 모두 리치를 걸면 유국. 4번째 리치 선언패로 아무도 론하지 않으면 그 자리에서 끝납니다.</li>
+    </ul>
+    <div class="fig">
+      <div class="ft">구종구패 예시 · 파란 테두리가 요구패 9종</div>
+      <div class="hand" data-hand="1!49!m 1!58p 1!28s 1!2!3!5!7!z"></div>
+      <div class="cap">1만 · 9만 · 1통 · 1삭 · 동 · 남 · 서 · 백 · 중 → 원하면 유국을 선언하고 다시 섞습니다.</div>
+    </div>
+
+    <h3>촌보 (반칙)</h3>
+    <p>화료 조건이 안 되는데 쯔모·론을 선언하고 손패를 펼치는 등 국을 계속할 수 없게 만든 경우입니다. 그 국은 다시 하고(본장 그대로, 친 유지), 반칙한 사람이 <span class="hl">만관만큼</span> 냅니다.</p>
+    <ul>
+      <li>자가 촌보: 친에게 4,000점, 다른 자에게 2,000점씩</li>
+      <li>친이 촌보: 자 3명에게 4,000점씩</li>
+    </ul>
+  </section>
+  <footer>리치마작 룰북 · 2026년 10월 · 작성 황윤하<br>PDF 받기: <a href="pdf/rulebook.pdf">전체 룰북 (A4)</a> · <a href="pdf/summary-a5.pdf">한 장 요약 (A5)</a></footer>
+</div>
+
+<!-- ================= 부록 A: 역 ================= -->
+<div class="wrap view" id="v-yaku" hidden>
+  <div class="view-head"><div class="badge">A</div><h2>역 목록<small>부록 A · 이름 · 판수 · 멘젠 · 예시</small></h2></div>
+  <p class="lead">‘멘젠’ 칸 읽는 법: <span class="mz">멘젠 한정</span>은 울면 성립하지 않고, <span class="mm">울면 −1판</span>은 울었을 때 1판 줄어듭니다. 비어 있으면 울어도 판수 그대로입니다.</p>
+  <div class="chipbar noprint" role="group" aria-label="역 필터" id="yfilter">
+    <button type="button" data-f="all" aria-pressed="true">전체 38</button>
+    <button type="button" data-f="basic" aria-pressed="false">초보 필수</button>
+    <button type="button" data-f="h1" aria-pressed="false">1판</button>
+    <button type="button" data-f="h2" aria-pressed="false">2판</button>
+    <button type="button" data-f="h3" aria-pressed="false">3판 이상</button>
+    <button type="button" data-f="ym" aria-pressed="false">역만</button>
+    <button type="button" data-f="open" aria-pressed="false">울어도 되는 역</button>
+  </div>
+  <div id="ylist"></div>
+  <p class="note">더블 역만은 인정하지 않습니다. 역만이 2개 이상 겹쳐도 역만 1개 점수입니다. 역만이 아니어도 13판 이상이면 헤아림 역만입니다.</p>
+</div>
+
+<!-- ================= 부록 B: 시작 방법 ================= -->
+<div class="wrap view" id="v-setup" hidden>
+  <div class="view-head"><div class="badge">B</div><h2>시작 방법<small>부록 B · 자리 정하기 · 패산 쌓기 · 패 가져가기</small></h2></div>
+  <p class="lead">처음 모였을 때 자리 정하기부터 패를 13장씩 나눠 갖기까지, 순서대로 따라 하면 됩니다. 자동탁이면 2~4단계는 기계가 대신합니다.</p>
+  <nav class="chipbar noprint" aria-label="단계 바로가기">
+    <a href="#s1"><span>1</span>자리 정하기</a><a href="#s2"><span>2</span>패산 쌓기</a><a href="#s3"><span>3</span>주사위</a><a href="#s4"><span>4</span>배패</a>
+  </nav>
+
+  <h3 id="s1">1. 자리 정하기</h3>
+  <ul>
+    <li>동·남·서·북 패 4장을 뒷면이 위로 오게 섞고 한 장씩 뽑아, 뽑은 바람 자리에 앉습니다.</li>
+    <li>동을 뽑은 사람이 첫 친입니다. 동의 오른쪽이 남, 맞은편이 서, 왼쪽이 북이고 차례는 반시계 방향으로 돕니다.</li>
+  </ul>
+
+  <h3 id="s2">2. 패산 쌓기</h3>
+  <ul>
+    <li>136장을 모두 뒷면이 위로 오게 펼치고 다 같이 섞습니다.</li>
+    <li>각자 앞에 <span class="hl">17장 × 2층 = 34장</span>(위아래 2장이 1스택)을 쌓고, 네 패산을 밀어 정사각형을 만듭니다.</li>
+  </ul>
+
+  <h3 id="s3">3. 주사위로 시작 위치 정하기</h3>
+  <div class="fig">
+    <div class="ft">주사위 합만큼 친부터 반시계 방향으로 세기 (친 = 1)</div>
+    <div class="seat">
+      <div></div><div class="p"><b>서</b><span>3 · 7 · 11</span></div><div></div>
+      <div class="p"><b>북</b><span>4 · 8 · 12</span></div><div class="c">↺</div><div class="p"><b>남</b><span>2 · 6 · 10</span></div>
+      <div></div><div class="p oya"><b>친(동)</b><span>1 · 5 · 9</span></div><div></div>
+    </div>
+  </div>
+  <ul>
+    <li>친이 주사위 2개를 굴리고, 나온 합만큼 친부터 반시계 방향으로 셉니다. 걸린 사람의 패산에서 시작합니다.</li>
+    <li>그 패산의 <span class="hl">오른쪽 끝에서 합만큼 스택</span>을 세고 그 자리를 끊습니다.</li>
+    <li>끊은 자리 <span class="hl">오른쪽 7스택(14장)이 왕패</span>입니다. 끊은 자리 쪽에서 3번째 스택의 윗장을 뒤집어 도라 표시패로 씁니다.</li>
+  </ul>
+  <div class="fig">
+    <div class="ft">예: 주사위 합 9 → 친의 패산을 오른쪽 끝에서 9스택 세기</div>
+    <div class="scroll">
+    <div class="wall">
+      <div class="lab"><div class="hand" style="margin:0;gap:2px" data-hand="xxxxxxxxz"></div><small>← 끊은 자리 왼쪽부터 가져가기</small></div>
+      <div class="cut" aria-label="여기서 끊기"></div>
+      <div class="lab"><div class="hand" style="margin:0;gap:2px" data-hand="xx5mxxxxz"></div><small>왕패 7스택(14장) · 3번째 = 도라 표시패</small></div>
+      <div class="lab"><div class="hand" style="margin:0;gap:2px" data-hand="xxz"></div><small>나머지 2스택</small></div>
+    </div>
+    </div>
+    <div class="cap">빨간 선이 끊는 자리. 오른쪽 끝 2스택은 맨 마지막에 쯔모하는 패입니다. 좁은 화면에서는 그림을 옆으로 밀어 보세요.</div>
+  </div>
+
+  <h3 id="s4">4. 패 가져가기 (배패)</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th></th><th>1바퀴</th><th>2바퀴</th><th>3바퀴</th><th>마지막</th><th class="num">합계</th></tr></thead>
+    <tbody>
+      <tr><td><b>친</b></td><td>4장</td><td>4장</td><td>4장</td><td>2장</td><td class="num"><b class="hl">14장</b></td></tr>
+      <tr><td><b>남</b></td><td>4장</td><td>4장</td><td>4장</td><td>1장</td><td class="num">13장</td></tr>
+      <tr><td><b>서</b></td><td>4장</td><td>4장</td><td>4장</td><td>1장</td><td class="num">13장</td></tr>
+      <tr><td><b>북</b></td><td>4장</td><td>4장</td><td>4장</td><td>1장</td><td class="num">13장</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <ul>
+    <li>끊은 자리 <span class="hl">왼쪽</span>부터 2스택(4장)씩, 친 → 남 → 서 → 북 순서로 3바퀴 가져가면 12장이 됩니다.</li>
+    <li>마지막으로 친은 2장, 나머지는 1장씩 더 가져갑니다. <span class="hl">친 14장, 자 13장</span>이면 준비 끝. 친이 1장을 버리면서 시작합니다.</li>
+  </ul>
+</div>
+
+<!-- ================= 부록 C: 용어 ================= -->
+<div class="wrap view" id="v-terms" hidden>
+  <div class="view-head"><div class="badge">C</div><h2>주요 용어<small>부록 C · 테이블에서 자주 듣는 말 51개</small></h2></div>
+  <div class="search noprint"><input type="search" id="term-q" placeholder="용어 검색 (예: 본장, 후리텐)" aria-label="용어 검색"></div>
+  <div class="chipbar noprint" role="group" aria-label="분류" id="tfilter"></div>
+  <div id="tlist"></div>
+</div>
+</main>
+
+<button type="button" class="fab noprint" id="totop" hidden>↑ 맨 위로</button>
+
+<script>
+(function(){
+/* ---------- 패 그리기 ---------- */
+const KN='一二三四五六七八九';
+const ring=(x,y,r,c)=>`<circle class="ring ${c}" cx="${x}" cy="${y}" r="${r}"/><circle class="dot ${c}" cx="${x}" cy="${y}" r="${(r*0.38).toFixed(2)}"/>`;
+const PIN={
+ 1:[[15,20,8,'r']],
+ 2:[[15,12,4.6,'b'],[15,28,4.6,'b']],
+ 3:[[8,9,4.1,'b'],[15,20,4.1,'r'],[22,31,4.1,'b']],
+ 4:[[9.5,12,4.3,'b'],[20.5,12,4.3,'b'],[9.5,28,4.3,'b'],[20.5,28,4.3,'b']],
+ 5:[[8.5,10,3.8,'b'],[21.5,10,3.8,'b'],[15,20,3.8,'r'],[8.5,30,3.8,'b'],[21.5,30,3.8,'b']],
+ 6:[[9.5,9,3.7,'b'],[20.5,9,3.7,'b'],[9.5,20,3.7,'r'],[20.5,20,3.7,'r'],[9.5,31,3.7,'r'],[20.5,31,3.7,'r']],
+ 7:[[7,7,3.2,'b'],[15,10.5,3.2,'b'],[23,14,3.2,'b'],[10,24,3.2,'r'],[20,24,3.2,'r'],[10,33,3.2,'r'],[20,33,3.2,'r']],
+ 8:[[10,7,3.2,'b'],[20,7,3.2,'b'],[10,15.7,3.2,'b'],[20,15.7,3.2,'b'],[10,24.3,3.2,'b'],[20,24.3,3.2,'b'],[10,33,3.2,'b'],[20,33,3.2,'b']],
+ 9:[[7.5,9,3.2,'b'],[15,9,3.2,'b'],[22.5,9,3.2,'b'],[7.5,20,3.2,'r'],[15,20,3.2,'r'],[22.5,20,3.2,'r'],[7.5,31,3.2,'b'],[15,31,3.2,'b'],[22.5,31,3.2,'b']]
+};
+const bar=(x,y,h,c)=>`<rect class="${c}" x="${x-1.6}" y="${y-h/2}" width="3.2" height="${h}" rx="1.5"/>`;
+const SOU={
+ 2:[[15,11.5,11],[15,28.5,11]],
+ 3:[[15,11.5,11],[9.5,28.5,11],[20.5,28.5,11]],
+ 4:[[9.5,11.5,11],[20.5,11.5,11],[9.5,28.5,11],[20.5,28.5,11]],
+ 5:[[8.5,10.5,10],[21.5,10.5,10],[15,20,10,1],[8.5,29.5,10],[21.5,29.5,10]],
+ 6:[[8,11.5,11],[15,11.5,11],[22,11.5,11],[8,28.5,11],[15,28.5,11],[22,28.5,11]],
+ 7:[[15,7.5,8,1],[8,20,9],[15,20,9],[22,20,9],[8,32,9],[15,32,9],[22,32,9]],
+ 8:[[6.5,11.5,11],[12.2,11.5,11],[17.8,11.5,11],[23.5,11.5,11],[6.5,28.5,11],[12.2,28.5,11],[17.8,28.5,11],[23.5,28.5,11]],
+ 9:[[8,8,9],[15,8,9,1],[22,8,9],[8,20,9],[15,20,9,1],[22,20,9],[8,32,9],[15,32,9,1],[22,32,9]]
+};
+function face(s,n,red){
+  if(s==='m') return `<text class="tk${red?' tr':''}" x="15" y="17" font-size="13">${KN[n-1]}</text><text class="tk tr" x="15" y="34.5" font-size="12.5">萬</text>`;
+  if(s==='p') return PIN[n].map(([x,y,r,c])=>ring(x,y,r,red?'r':c)).join('')+(n===1?`<circle class="ring r" cx="15" cy="20" r="4.5"/>`:'');
+  if(s==='s'){
+    if(n===1) return `<ellipse class="tg" cx="15" cy="25" rx="5.2" ry="8"/><circle class="tg" cx="15" cy="12" r="3.4"/><circle class="tr" cx="15" cy="11" r="1.4"/>`;
+    return SOU[n].map(([x,y,h,r])=>bar(x,y,h,(r||red)?'tr':'tg')).join('');
+  }
+  if(s==='z'){
+    if(n<=4) return `<text class="tk" x="15" y="27" font-size="18">${'東南西北'[n-1]}</text>`;
+    if(n===5) return `<rect x="8" y="9" width="14" height="22" rx="2" fill="none" stroke="var(--pin)" stroke-width="1.6"/>`;
+    if(n===6) return `<text class="tk tg" x="15" y="27" font-size="17">發</text>`;
+    return `<text class="tk tr" x="15" y="27" font-size="18">中</text>`;
+  }
+  return '';
+}
+const NAME={m:'만',p:'통',s:'삭'}, ZN=['동','남','서','북','백','발','중'];
+function tile(s,d,mods){
+  const side=mods.includes("'"), back=d==='x'||mods.includes('b'), hi=mods.includes('!');
+  const red=d==='0', n=red?5:+d;
+  const inner = back ? `<rect class="tb" x=".75" y=".75" width="28.5" height="38.5" rx="3.5"/>`
+                     : `<rect class="tf" x=".75" y=".75" width="28.5" height="38.5" rx="3.5"/>`+face(s,n,red);
+  const w=side?40:30,h=side?30:40;
+  const g=side?`<g transform="translate(40,0) rotate(90)">${inner}</g>`:inner;
+  const label=back?'뒷면':(s==='z'?ZN[n-1]:n+NAME[s])+(red?' (빨간 5)':'');
+  return `<svg class="tile${side?' side':''}${hi?' hi':''}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${label}">${g}</svg>`;
+}
+function group(tok){
+  const s=tok.slice(-1), body=tok.slice(0,-1); let out='';
+  for(let i=0;i<body.length;i++){
+    const d=body[i]; let m='';
+    while(i+1<body.length && "'!b".includes(body[i+1])){m+=body[++i];}
+    out+=tile(s,d,m);
+  }
+  return out;
+}
+function renderHands(root){
+  root.querySelectorAll('[data-hand]').forEach(el=>{
+    const toks=el.dataset.hand.trim().split(/\s+/);
+    const labs=(el.dataset.labels||'').split('|');
+    el.innerHTML=toks.map((t,i)=>`<div class="grp"><div class="ts">${group(t)}</div>${labs[i]?`<small>${labs[i]}</small>`:''}</div>`).join('');
+  });
+}
+/* 왕패 그림: 스택마다 [윗장][아랫장], x=뒷면 d=도라표시패 k=깡도라표시패 h=옮길 패 H=옮겨진 패 r=보충패 .=빈자리 */
+function cell(c){
+  if(c==='.') return '<div class="e" aria-label="빈자리"></div>';
+  if(c==='d') return tile('m','3','');
+  if(c==='k') return tile('z','7','');
+  if(c==='h'||c==='H') return tile('z','x','!');
+  if(c==='r') return tile('z','x','!');
+  return tile('z','x','');
+}
+document.querySelectorAll('[data-wall]').forEach(el=>{
+  const [live,wan]=el.dataset.wall.split('|').map(s=>s.trim().split(/\s+/));
+  const st=a=>a.map(p=>`<div class="stk">${cell(p[0])}${cell(p[1])}</div>`).join('');
+  el.innerHTML=`<div class="seg2">${st(live)}</div><div class="cut" aria-label="왕패 경계"></div><div class="seg2 w">${st(wan)}</div>`;
+});
+
+/* ---------- 역 ---------- */
+const Y=[
+ // [그룹, 이름, 판, 멘젠(0없음 1한정 2울면-1), 설명, 손패]
+ ['basic','리치','1판',1,'멘젠 텐파이에서 선언하고 1,000점 공탁',''],
+ ['basic','멘젠쯔모','1판',1,'안 울고 내가 뽑은 패로 화료',''],
+ ['basic','탕야오','1판',0,'2~8 숫자패만으로 구성','234m 456p 678s 345s 55p'],
+ ['basic','역패','1판',0,'백·발·중, 장풍(동), 자풍 커츠 1개당 1판','555z 123p 789s 456s 99p'],
+ ['basic','핑후','1판',1,'슌츠 4개 + 역패 아닌 머리 + 양면대기 화료','123p 567p 678s 22m 34s 5!s'],
+ ['basic','치또이츠','2판',1,'서로 다른 또이츠 7개','22p 55p 99p 33s 77s 11z 77z'],
+ ['basic','혼일색','3판',2,'한 종류 숫자패 + 자패만','123s 456s 999s 111z 66z'],
+ ['other','일발','1판',1,'리치 후 한 바퀴 안에, 아무도 울기 전에 화료',''],
+ ['other','이페코','1판',1,'같은 슌츠 2개','234p 234p 567s 678m 11z'],
+ ['other','해저로월','1판',0,'패산의 마지막 패로 쯔모',''],
+ ['other','하저로어','1판',0,'마지막 버림패로 론',''],
+ ['other','영상개화','1판',0,'깡 보충패로 화료',''],
+ ['other','창깡','1판',0,'남이 가깡한 패로 론',''],
+ ['other','더블리치','2판',1,'첫 차례에, 아무도 울기 전에 리치',''],
+ ['other','삼색동순','2판',2,'만·통·삭으로 같은 숫자 슌츠','345m 345p 345s 789p 22s'],
+ ['other','일기통관','2판',2,'한 종류로 123·456·789','123s 456s 789s 234p 44z'],
+ ['other','찬타','2판',2,'모든 몸통과 머리에 요구패 포함','123m 789p 123s 333z 99p'],
+ ['other','또이또이','2판',0,'커츠 4개 + 머리','222m 888p 999s 666z 33s'],
+ ['other','산안커','2판',0,'안 울고 만든 커츠 3개 (나머지는 울어도 됨)','555m 333p 777s 678p 22z'],
+ ['other','삼색동각','2판',0,'만·통·삭으로 같은 숫자 커츠','777m 777p 777s 234s 55p'],
+ ['other','소삼원','2판',0,'삼원패 커츠 2개 + 삼원패 머리 (역패 2판 별도)','555z 666z 77z 234m 789s'],
+ ['other','혼노두','2판',0,'1·9와 자패만','111m 999p 111z 444z 11s'],
+ ['other','삼깡쯔','2판',0,'깡 3번',"4444'm 8b888bp 77'77z 234s 77s"],
+ ['other','량페코','3판',1,'이페코 2쌍','345p 345p 678s 678s 99m'],
+ ['other','준찬타','3판',2,'모든 몸통과 머리에 1이나 9 포함 (자패 없음)','123m 789m 111p 789s 99p'],
+ ['other','청일색','6판',2,'한 종류 숫자패만','111p 234p 567p 789p 55p'],
+ ['ym','국사무쌍','역만',1,'요구패 13종을 1장씩 + 그중 1장 더','19m 19p 19s 123456z 7!z'],
+ ['ym','스안커','역만',1,'안 울고 만든 커츠 4개','222m 555p 888s 111z 66m'],
+ ['ym','대삼원','역만',0,'백·발·중 모두 커츠','555z 666z 777z 345m 99s'],
+ ['ym','소사희','역만',0,'바람 커츠 3개 + 바람 머리','111z 222z 333z 44z 456p'],
+ ['ym','대사희','역만',0,'바람 커츠 4개','111z 222z 333z 444z 55m'],
+ ['ym','자일색','역만',0,'자패만으로 구성','111z 222z 555z 777z 44z'],
+ ['ym','녹일색','역만',0,'2·3·4·6·8삭과 발만으로 구성','234s 666s 888s 666z 44s'],
+ ['ym','청노두','역만',0,'1·9 숫자패만으로 구성','111m 999m 111p 999s 99p'],
+ ['ym','구련보등','역만',1,'한 종류로 1112345678999 + 1장','1112345678999m 5!m'],
+ ['ym','사깡쯔','역만',0,'깡 4번',"3333'm 8b888bp 22'22s 3333'z 11p"],
+ ['ym','천화','역만',1,'친이 배패 14장 그대로 화료',''],
+ ['ym','지화','역만',1,'자가 아무도 울기 전 첫 쯔모로 화료','']
+];
+const MZ=['','<span class="mz">멘젠 한정</span>','<span class="mm">울면 −1판</span>'];
+const SEC={basic:['초보 필수 역','7가지'],other:['기타 역','19가지'],ym:['역만','12가지 · 자 32,000 / 친 48,000']};
+let yf='all';
+function yMatch(y){
+  const h=parseInt(y[2])||99;
+  return yf==='all'||(yf==='basic'&&y[0]==='basic')||(yf==='h1'&&h===1)||(yf==='h2'&&h===2)||(yf==='h3'&&h>=3&&h<99)||(yf==='ym'&&y[0]==='ym')||(yf==='open'&&y[3]!==1);
+}
+function renderYaku(){
+  let html='';
+  for(const g of ['basic','other','ym']){
+    const rows=Y.filter(y=>y[0]===g&&yMatch(y));
+    if(!rows.length) continue;
+    html+=`<div class="ysec">${SEC[g][0]} <small>${SEC[g][1]}</small></div><div class="ylist">`+rows.map(y=>
+      `<div class="y"><div class="nm">${y[1]}</div><div class="hn${y[2]==='역만'?' ym':''}">${y[2]}</div><div>${MZ[y[3]]}</div><div class="ds">${y[4]}${y[5]?`<div class="hand" data-hand="${y[5]}"></div>`:''}</div></div>`).join('')+'</div>';
+  }
+  const el=document.getElementById('ylist'); el.innerHTML=html||'<p class="empty">해당하는 역이 없습니다.</p>'; renderHands(el);
+}
+document.getElementById('yfilter').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return; yf=b.dataset.f;
+  document.querySelectorAll('#yfilter button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  renderYaku();
+});
+renderYaku();
+
+/* ---------- 용어 ---------- */
+const T=[
+ ['패',[['만수','萬子','萬 글자가 적힌 숫자패 1~9'],['통수','筒子','동그라미 무늬 숫자패 1~9'],['삭수','索子','대나무 무늬 숫자패 1~9 (1삭은 새)'],['자패','字牌','풍패 4종 + 삼원패 3종'],['풍패','風牌','동·남·서·북'],['삼원패','三元牌','백·발·중'],['노두패','老頭牌','숫자패 1과 9'],['중장패','中張牌','숫자패 2~8'],['요구패','幺九牌','노두패 + 자패'],['도라','ドラ','가지고 있으면 장당 1판이 붙는 보너스 패'],['아카도라','赤ドラ','빨간 5. 장당 1판'],['뒷도라','裏ドラ','리치 화료 때 표시패 아래를 뒤집어 보는 추가 도라'],['패산','牌山','쌓아 둔 패. 여기서 쯔모함'],['왕패','王牌','패산 끝 14장. 도라 표시패와 깡 보충패가 있음']]],
+ ['손패 구성',[['몸통 (멘츠)','面子','슌츠·커츠·깡츠를 통틀어 부르는 말'],['슌츠','順子','같은 종류 연속 숫자 3장 (3·4·5만)'],['커츠','刻子','같은 패 3장'],['깡츠','槓子','같은 패 4장'],['머리 (또이츠)','雀頭 · 対子','같은 패 2장'],['멘젠','門前','한 번도 울지 않은 상태 (암깡은 괜찮음)'],['텐파이','聴牌','1장만 더 오면 화료하는 상태'],['노텐','不聴','텐파이가 아닌 상태'],['양면대기','両面','4·5처럼 양쪽(3·6) 어느 쪽이 와도 되는 대기'],['단기대기','単騎','머리 1장을 기다리는 대기'],['후리텐','振聴','론할 수 없는 상태. 내 버림패에 대기패가 있을 때 등 (룰북 6장)']]],
+ ['선언과 행동',[['쯔모','自摸','패산에서 1장 가져오기. 그 패로 완성하면 쯔모 화료'],['론','栄和','남이 버린 패로 화료'],['화료','和了','손패를 완성해 이기는 것'],['방총','放銃','내가 버린 패로 남이 론하는 것'],['치','吃','왼쪽 사람 패로 슌츠 만들기'],['퐁','碰','누구의 패로든 커츠 만들기'],['깡','槓','같은 패 4장 선언. 대명깡·암깡·가깡이 있음'],['리치','立直','멘젠 텐파이 선언 + 1,000점 공탁'],['쯔모기리','ツモ切り','가져온 패를 그대로 버리기']]],
+ ['자리와 진행',[['친','親','이번 국의 딜러. 화료 점수 1.5배, 남의 쯔모 땐 자의 2배를 냄'],['자','子','친이 아닌 나머지 3명'],['장풍 · 자풍','場風 · 自風','판 전체의 바람(동풍전은 동) · 내 자리의 바람'],['국','局','배패부터 화료·유국까지의 한 판. 친이 넘어갈 때 번호가 올라감 (동1국 → 동2국)'],['동풍전','東風戦','동1국~동4국으로 끝나는 짧은 게임'],['연짱','連荘','친이 이기거나 텐파이 유국해서 친을 한 번 더 하는 것'],['본장','本場','친 옆에 쌓는 100점봉. 1개당 화료 점수 +300'],['유국','流局','아무도 화료하지 못하고 패산이 끝남'],['공탁','供託','테이블 가운데 놓인 리치봉. 다음 화료자가 가져감'],['들통 (토비)','飛び','점수가 0점 미만이 되는 것. 즉시 종료'],['촌보','錯和','잘못된 화료 선언 등 반칙. 만관만큼 냄 (룰북 6장)']]],
+ ['점수',[['역','役','화료에 필요한 조건. 최소 1개 필요'],['판','翻','역과 도라로 쌓는 점수 단위'],['부','符','정식 점수 계산의 세부 단위. 우리는 30부로 고정'],['만관','満貫','4~5판. 자 8,000 / 친 12,000'],['역만','役満','최고 등급 역. 자 32,000 / 친 48,000'],['헤아림 역만','数え役満','역만이 아니어도 13판 이상이면 역만 점수']]]
+];
+let tc='all';
+const tf=document.getElementById('tfilter');
+tf.innerHTML=`<button type="button" data-c="all" aria-pressed="true">전체</button>`+T.map(([c])=>`<button type="button" data-c="${c}" aria-pressed="false">${c}</button>`).join('');
+function renderTerms(){
+  const q=document.getElementById('term-q').value.trim();
+  let html='';
+  for(const [c,rows] of T){
+    if(tc!=='all'&&tc!==c) continue;
+    const r=rows.filter(x=>!q||x.join(' ').includes(q));
+    if(!r.length) continue;
+    html+=`<div class="tcat">${c}</div>`+r.map(x=>`<div class="trow"><div class="w">${x[0]}</div><div class="hz">${x[1]}</div><div class="m">${x[2]}</div></div>`).join('');
+  }
+  document.getElementById('tlist').innerHTML=html?`<div class="tlist">${html}</div>`:'<p class="empty">찾는 용어가 없습니다. 다른 말로 검색해 보세요.</p>';
+}
+tf.addEventListener('click',e=>{const b=e.target.closest('button'); if(!b) return; tc=b.dataset.c; tf.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderTerms();});
+document.getElementById('term-q').addEventListener('input',renderTerms);
+renderTerms();
+
+/* ---------- 점수 계산기 ---------- */
+const TB={1:[1000,300,500,1500,500],2:[2000,500,1000,2900,1000],3:[3900,1000,2000,5800,2000],4:[8000,2000,4000,12000,4000],6:[12000,3000,6000,18000,6000],8:[16000,4000,8000,24000,8000],11:[24000,6000,12000,36000,12000],13:[32000,8000,16000,48000,16000]};
+const st={honba:0,kyo:0};
+const f=n=>n.toLocaleString('ko-KR');
+function calc(){
+  const han=document.querySelector('input[name=han]:checked').value, who=document.querySelector('input[name=who]:checked').value, how=document.querySelector('input[name=how]:checked').value;
+  const t=TB[han], h=st.honba, k=st.kyo; let rows=[], total=0;
+  if(how==='ron'){
+    const base=who==='ko'?t[0]:t[3]; const pay=base+h*300; total=pay+k*1000;
+    rows.push(['버린 사람이 내는 점수',`${f(base)}${h?` + 본장 ${f(h*300)}`:''} = ${f(pay)}`]);
+  } else if(who==='ko'){
+    const ko=t[1]+h*100, oya=t[2]+h*100; total=ko*2+oya+k*1000;
+    rows.push(['친이 내는 점수',f(oya)],['자 2명이 각각 내는 점수',f(ko)]);
+  } else {
+    const each=t[4]+h*100; total=each*3+k*1000;
+    rows.push(['자 3명이 각각 내는 점수',f(each)]);
+  }
+  if(k) rows.push(['가운데 1,000점봉',`+${f(k*1000)}`]);
+  document.getElementById('honba-v').textContent=h+'개'; document.getElementById('kyo-v').textContent=k+'개';
+  document.getElementById('calc-out').innerHTML=rows.map(r=>`<div class="row"><span>${r[0]}</span><span>${r[1]}</span></div>`).join('')+`<div class="tot"><span>화료한 사람이 받는 합계</span><span>+${f(total)}</span></div>`;
+}
+document.getElementById('calc').addEventListener('change',calc);
+document.querySelectorAll('[data-step]').forEach(b=>b.addEventListener('click',()=>{const key=b.dataset.step; st[key]=Math.max(0,Math.min(9,st[key]+ +b.dataset.d)); calc();}));
+calc();
+
+renderHands(document);
+
+/* ---------- 탭 (해시) ---------- */
+const VIEWS=['summary','rulebook','yaku','setup','terms'];
+const owner={}; ['ch1','ch2','ch3','ch4','ch5','ch6'].forEach(i=>owner[i]='rulebook'); ['s1','s2','s3','s4'].forEach(i=>owner[i]='setup');
+let cur=null;
+function route(){
+  const h=location.hash.slice(1);
+  const v=VIEWS.includes(h)?h:(owner[h]||'summary');
+  VIEWS.forEach(x=>document.getElementById('v-'+x).hidden=x!==v);
+  document.querySelectorAll('nav.tabs a').forEach(a=>{a.setAttribute('aria-current',a.dataset.view===v?'page':'false'); if(a.dataset.view===v) a.scrollIntoView({block:'nearest',inline:'nearest'});});
+  if(owner[h]){const t=document.getElementById(h); if(t) requestAnimationFrame(()=>t.scrollIntoView());}
+  else if(v!==cur) window.scrollTo(0,0);
+  cur=v;
+}
+window.addEventListener('hashchange',route); route();
+const fab=document.getElementById('totop');
+window.addEventListener('scroll',()=>{fab.hidden=window.scrollY<700;},{passive:true});
+fab.addEventListener('click',()=>window.scrollTo(0,0));
+})();
+</script>
+
+</body>
+</html>
